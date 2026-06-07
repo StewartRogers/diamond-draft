@@ -2,7 +2,34 @@
 
 import { useState } from "react";
 import { useDiamondDraftStore } from "@/lib/store";
-import type { LeagueRules } from "@/lib/types";
+import { C, PageHeader } from "@/components/AppShell";
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button className={"dd-toggle" + (on ? " on" : "")} onClick={onToggle}>
+      <i />
+    </button>
+  );
+}
+
+function RuleRow({
+  title, body, on, onToggle,
+}: { title: string; body: string; on: boolean; onToggle: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex", justifyContent: "space-between", gap: 20,
+        padding: "16px 0", borderBottom: `1px solid ${C.line2}`,
+      }}
+    >
+      <div style={{ maxWidth: 540 }}>
+        <div style={{ fontSize: 14.5, fontWeight: 700 }}>{title}</div>
+        <div style={{ fontSize: 13, color: C.faint, marginTop: 3 }}>{body}</div>
+      </div>
+      <Toggle on={on} onToggle={onToggle} />
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const rules = useDiamondDraftStore((s) => s.settings.leagueRules);
@@ -13,71 +40,22 @@ export default function SettingsPage() {
   const importBackup = useDiamondDraftStore((s) => s.importBackup);
   const clearAllData = useDiamondDraftStore((s) => s.clearAllData);
 
+  const [localTeamName, setLocalTeamName] = useState(teamName);
+  const [defaultInnings, setDefaultInnings] = useState(String(rules.defaultInnings));
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
-  const fields: Array<{
-    key: keyof LeagueRules;
-    label: string;
-    type: "number" | "boolean";
-    help?: string;
-  }> = [
-    { key: "defaultInnings", label: "Default innings per game", type: "number" },
-    { key: "minFieldPlayers", label: "Min field players per inning", type: "number" },
-    { key: "maxFieldPlayers", label: "Max field players per inning", type: "number" },
-    {
-      key: "maxConsecutiveBench",
-      label: "Max consecutive bench innings",
-      type: "number",
-      help: "0 = no limit",
-    },
-    {
-      key: "minFieldInningsPerPlayer",
-      label: "Min field innings per player per game",
-      type: "number",
-    },
-    {
-      key: "globalPitchingLimitGame",
-      label: "Global pitching limit per game (innings)",
-      type: "number",
-      help: "0 = no limit",
-    },
-    {
-      key: "pitchingRestInnings",
-      label: "Required rest innings between games for pitchers",
-      type: "number",
-      help: "0 = no rest required",
-    },
-    {
-      key: "enforcePositionEligibility",
-      label: "Enforce position eligibility",
-      type: "boolean",
-    },
-    { key: "enforceFairPlayTime", label: "Enforce fair play time", type: "boolean" },
-    {
-      key: "enforceNoPitchingAfterCatching",
-      label: "No pitching after catching in same game",
-      type: "boolean",
-    },
-  ];
+  const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
-  async function handleSave(key: keyof LeagueRules, value: number | boolean) {
-    await updateLeagueRules({ [key]: value });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }
-
-  async function handleTeamNameSave(value: string) {
-    await updateSettings({ teamName: value });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleSaveTeam() {
+    await updateSettings({ teamName: localTeamName.trim() });
+    await updateLeagueRules({ defaultInnings: Number(defaultInnings) || 7 });
+    flash();
   }
 
   async function handleExport() {
     const data = await exportBackup();
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -94,119 +72,123 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-2xl">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-slate-400 text-sm mt-1">Configure league rules and manage your data.</p>
-      </div>
+    <div className="dd-wrap" style={{ maxWidth: 820 }}>
+      <PageHeader
+        eyebrow="Configuration"
+        title="Settings"
+        subtitle="Team identity and the fair-play rules the lineup builder checks against."
+      />
 
-      {/* Team Info */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">Team Info</h2>
-          {saved && <span className="text-green-400 text-xs font-medium">Saved ✓</span>}
+      {/* Team card */}
+      <div className="dd-card" style={{ padding: "8px 24px 20px" }}>
+        <div style={{ padding: "18px 0 6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span className="dd-eyebrow">Team</span>
+          {saved && <span style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>Saved ✓</span>}
         </div>
-        <div>
-          <label className="block text-sm text-slate-200 mb-1">Team name</label>
-          <input
-            defaultValue={teamName}
-            onBlur={(e) => handleTeamNameSave(e.currentTarget.value.trim())}
-            placeholder="e.g. Cardinals"
-            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <p className="text-xs text-slate-500 mt-1">
-            This will prefill new games unless you override it for a specific game.
-          </p>
-        </div>
-      </div>
-
-      {/* League Rules */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-white">League Rules</h2>
-          {saved && (
-            <span className="text-green-400 text-xs font-medium">Saved ✓</span>
-          )}
-        </div>
-
-        {fields.map(({ key, label, type, help }) => (
-          <div key={key} className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm text-slate-200">{label}</p>
-              {help && <p className="text-xs text-slate-500 mt-0.5">{help}</p>}
-            </div>
-            {type === "boolean" ? (
-              <input
-                type="checkbox"
-                checked={rules[key] as boolean}
-                onChange={(e) => handleSave(key, e.target.checked)}
-                className="w-5 h-5 accent-blue-500 flex-shrink-0"
-              />
-            ) : (
-              <input
-                type="number"
-                min={0}
-                value={rules[key] as number}
-                onChange={(e) => handleSave(key, Number(e.target.value))}
-                className="w-20 bg-slate-700 border border-slate-600 rounded-md px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-              />
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Data Management */}
-      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
-        <h2 className="text-base font-semibold text-white">Data Management</h2>
-        <p className="text-xs text-slate-400">
-          All data is stored locally in your browser. Export a backup to keep a copy.
-        </p>
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={handleExport}
-            className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            Export Backup
-          </button>
-          <label className="bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer">
-            Import Backup
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, paddingBottom: 8 }}>
+          <div className="dd-field">
+            <label>Team name</label>
             <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleImport}
+              className="dd-input"
+              value={localTeamName}
+              onChange={(e) => setLocalTeamName(e.target.value)}
+              placeholder="e.g. Eastside Owls"
             />
+          </div>
+          <div className="dd-field">
+            <label>Head coach</label>
+            <input className="dd-input" placeholder="e.g. Coach Jamie" />
+          </div>
+          <div className="dd-field">
+            <label>League / division</label>
+            <input className="dd-input" placeholder="e.g. Spring Minors · 9U" />
+          </div>
+          <div className="dd-field">
+            <label>Default innings</label>
+            <input
+              className="dd-input"
+              type="number"
+              min={1} max={12}
+              value={defaultInnings}
+              onChange={(e) => setDefaultInnings(e.target.value)}
+            />
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+          <button className="dd-btn sec" onClick={() => { setLocalTeamName(teamName); setDefaultInnings(String(rules.defaultInnings)); }}>
+            Discard
+          </button>
+          <button className="dd-btn pri" onClick={handleSaveTeam}>Save team info</button>
+        </div>
+      </div>
+
+      {/* Fair-play rules card */}
+      <div className="dd-card" style={{ padding: "8px 24px 14px", marginTop: 18 }}>
+        <div style={{ padding: "18px 0 6px" }}>
+          <span className="dd-eyebrow">Fair-play rules</span>
+        </div>
+        <RuleRow
+          title="Minimum 2 innings on the field"
+          body="Flag any player who fields fewer than two innings across the game."
+          on={rules.enforceFairPlayTime}
+          onToggle={() => updateLeagueRules({ enforceFairPlayTime: !rules.enforceFairPlayTime })}
+        />
+        <RuleRow
+          title="No back-to-back bench"
+          body="Flag a player benched in two consecutive innings."
+          on={rules.maxConsecutiveBench <= 1}
+          onToggle={() => updateLeagueRules({ maxConsecutiveBench: rules.maxConsecutiveBench <= 1 ? 0 : 1 })}
+        />
+        <RuleRow
+          title="Pitch / inning caps"
+          body="Warn when a pitcher approaches their per-game or season inning limit."
+          on={rules.globalPitchingLimitGame > 0}
+          onToggle={() => updateLeagueRules({ globalPitchingLimitGame: rules.globalPitchingLimitGame > 0 ? 0 : 3 })}
+        />
+        <RuleRow
+          title="No pitching after catching"
+          body="A player who caught in a game may not pitch in the same game."
+          on={rules.enforceNoPitchingAfterCatching}
+          onToggle={() => updateLeagueRules({ enforceNoPitchingAfterCatching: !rules.enforceNoPitchingAfterCatching })}
+        />
+        <RuleRow
+          title="Enforce position eligibility"
+          body="Only assign players to positions they're eligible for during auto-fill."
+          on={rules.enforcePositionEligibility}
+          onToggle={() => updateLeagueRules({ enforcePositionEligibility: !rules.enforcePositionEligibility })}
+        />
+      </div>
+
+      {/* Data management */}
+      <div className="dd-card" style={{ padding: "8px 24px 20px", marginTop: 18 }}>
+        <div style={{ padding: "18px 0 6px" }}>
+          <span className="dd-eyebrow">Data management</span>
+        </div>
+        <p style={{ fontSize: 13, color: C.faint, marginBottom: 16 }}>
+          All data is persisted server-side in SQLite. Export a backup to keep a local copy.
+        </p>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="dd-btn sec" onClick={handleExport}>Export backup</button>
+          <label className="dd-btn sec" style={{ cursor: "pointer" }}>
+            Import backup
+            <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
           </label>
         </div>
-
-        <div className="border-t border-slate-700 pt-4">
+        <div style={{ borderTop: `1px solid ${C.line2}`, marginTop: 20, paddingTop: 16 }}>
           {!confirmClear ? (
             <button
+              style={{ color: C.red, fontWeight: 600, fontSize: 13.5, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
               onClick={() => setConfirmClear(true)}
-              className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors"
             >
-              Clear All Data…
+              Clear all data…
             </button>
           ) : (
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-red-300">
-                This will delete all players, games, and settings. Are you sure?
-              </span>
-              <button
-                onClick={async () => {
-                  await clearAllData();
-                  setConfirmClear(false);
-                }}
-                className="bg-red-600 hover:bg-red-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition-colors"
-              >
-                Clear Everything
+            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
+              <span style={{ color: C.red }}>Delete all players, games, and settings?</span>
+              <button className="dd-btn pri sm" style={{ background: C.red }} onClick={async () => { await clearAllData(); setConfirmClear(false); }}>
+                Clear everything
               </button>
-              <button
-                onClick={() => setConfirmClear(false)}
-                className="text-slate-400 hover:text-white text-xs px-3 py-1.5 rounded hover:bg-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
+              <button className="dd-btn ghost sm" onClick={() => setConfirmClear(false)}>Cancel</button>
             </div>
           )}
         </div>

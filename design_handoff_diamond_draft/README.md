@@ -1,7 +1,9 @@
 # Handoff: Diamond Draft — Youth Baseball Lineup Builder
 
 ## Overview
-Diamond Draft is an interactive lineup builder for a youth baseball coach. It plans a full **7-inning game** for one team: who bats in what order, what defensive position each player plays each inning, and who sits the bench — while enforcing league fair-play rules in real time. There are **two synchronized views** of the same plan: a tabular **Grid** and a **Field** diagram stepped inning-by-inning.
+Diamond Draft is an app for a youth baseball coach to plan rule-clean lineups across a season. The core is an interactive **lineup builder** for one game: who bats in what order, what defensive position each player plays each inning, and who sits the bench — enforcing league fair-play rules in real time, with **two synchronized views** (a tabular **Grid** and a **Field** diagram stepped inning-by-inning). Around the builder is a small app: **Home / Dugout, Roster, Games, New Game, Settings**.
+
+> **⚠️ READ FIRST — the most common implementation mistake.** Diamond Draft is a **warm, light** design: cream page background, **white** cards, **olive-green** primary (`#3f6212`). An earlier dev build drifted to **dark-navy cards with dark text** (names became unreadable) and a **bright kelly/blue** primary button. **Do not do that.** See **Contrast & color rules** below — getting the surface/text/primary trio right is what keeps the whole app on-brand and accessible.
 
 ## About the Design Files
 The files in this bundle are **design references created in HTML/React (via in-browser Babel)** — a working prototype showing intended look and behavior, **not production code to ship directly**. The task is to **recreate this design in the target codebase's existing environment** (React, Vue, Svelte, SwiftUI, etc.) using its established patterns, state libraries, and component conventions. If no environment exists yet, pick the most appropriate framework and implement there. The prototype hard-codes one game's worth of mock data; a real implementation would source roster/schedule from app state or an API.
@@ -45,7 +47,7 @@ The entire UI derives from three pieces of state plus a static roster.
 
 ---
 
-## Screens / Views
+## The Lineup Builder (core screen)
 
 ### Shared chrome (both views)
 - **Card**: width `1320px`, `background #fff`, `border 1px solid #e7e4dc`, `border-radius 16px`, `overflow hidden`, shadow `0 1px 3px rgba(40,35,25,.06), 0 18px 50px rgba(40,35,25,.07)`. The page scales this card down (transform: scale) to fit narrow viewports, never up.
@@ -85,6 +87,36 @@ A diamond diagram (left) + roster panel (right), stepped one inning at a time.
 8. **Popovers**: portal to `document.body` with `position: fixed` (so the scaled card's transform doesn't capture them), clamped within the viewport, close on outside pointerdown or Escape.
 9. **Print**: `window.print()`.
 
+---
+
+## App Screens (around the builder)
+
+A light top **nav bar** (sticky, `height 64`, `background rgba(255,255,255,.86)` + blur, bottom border `#e7e4dc`) is shared by every screen: rotated-square logo + "Diamond Draft" (`800`, 17px, `white-space:nowrap`) on the left; nav links **Home · Roster · Games · Settings** (each `padding 7px 14px`, radius 9, `600`, muted `#6f6a60`; **active** = `color #3f6212` on `#eef1e3`; hover = `#f1efe8`); a round avatar on the right. Page content sits in a centered `.wrap` (max-width `1180px`, padding `34px 30px 70px`; the lineup screen uses `1380px`). Page titles are `30px/800`, with a mono uppercase **eyebrow** (`11px`, letter-spacing .08em, `#a09a8e`) above and a `14.5px #6f6a60` subtitle below.
+
+**Home (“Dugout”)** — header with eyebrow `{team} · {coach}`, title, subtitle, and right-aligned **Manage roster** (secondary) + **New game** (primary) buttons. Then a 3-up grid of **stat cards** (white `.card`, `padding 22px 24px`): big olive number (`46px/800`, `#3f6212`), a small rotated-square accent (`#eef1e3` fill, `#dbe3c6` border) top-right, a `14.5/700` label, and a faint sub-line. Below, an "Upcoming & recent games" eyebrow with a **View all →** link, then a list of **game rows**.
+
+**Game row** (`.listrow`, `padding 16px 18px`, radius 13, border `#e7e4dc`, hover lifts + olive border): a 52px date chip (home games tint olive `#eef1e3`/`#dbe3c6`, away tint blue `#eef2f6`/`#dbe4ec`) showing day over month (mono); the matchup `vs {opp}` / `@ {opp}` (`16/700`, **ellipsis-truncated, no wrap** — important to avoid colliding with the meta line) + a HOME/AWAY chip; a meta line `{time} · {innings} innings · {players} players` (`13px #a09a8e`, `nowrap`); right-aligned **status pill** (Finalized = green, Draft = amber `#a16207`/`#f8f0db`/`#ecdcb6`, Not started = grey) + chevron. Clicking opens the **Lineup** screen.
+
+**Roster** — header + **Add player** (primary). A search input (`.input`, 44px, focus ring `rgba(63,98,18,.13)`) filters by name/number. A white `.card` wraps a table: columns **# / Player / Eligible positions / Plays / Status / (edit)**. Header cells are mono uppercase `10.5px #a09a8e` with a `1.5px #d9d5cb` bottom rule; body rows `padding 13px 16px`, `1px #eeece5` separators, hover `rgba(63,98,18,.035)`. Jersey = mono chip (`#eef0e6`/`#3f6212`). Eligible positions render as **zone-tinted chips** (mono `11px`, see zone colors). Status uses the status pills (see tokens). Last-initial format "First L.".
+
+**Games** — header + **New game**; a segmented filter **All / Draft / Finalized** (`.seg`); then the same game-row list, filtered. Empty state = centered faint message in a card.
+
+**New Game (modal)** — a scrim (`rgba(33,30,22,.34)` + blur) over a 560px white modal (radius 18, shadow `0 24px 70px rgba(30,26,18,.34)`). Header (eyebrow + `20/800` title + close X), body fields: Opponent (text), Date + First pitch (2-col), Home/Away segmented + Innings segmented (`6/7/9`), and an info note (`#faf8f3` panel) stating the active roster carries in. Footer (`#fcfbf8`, top border): **Cancel** (secondary) + **Create & build lineup** (primary) → opens the Lineup screen. Close on scrim click or X.
+
+**Settings** (`.wrap` max-width 820) — two white cards. **Team**: a 2-col grid of inputs (team name, head coach, league/division, default innings). **Fair-play rules**: rows of `title` + faint `body` + a **toggle** (`42×25` pill, off `#d8d3c8` / on `#3f6212`, 19px knob) — Minimum 2 innings, No back-to-back bench, Pitch/inning caps, Rotate battery, Equal at-bats. Footer buttons **Discard** / **Save settings**.
+
+**Lineup** — wraps the builder in the app shell: a breadcrumb **‹ Games** (left) and a **Draft · not finalized** amber pill (right), then the 1320px builder card. The card is **scaled to fit** the available width via a `FitCard` helper (ResizeObserver measures the container, applies `transform: scale(min(1, width/1320))`, and reserves the scaled height so there's no gap/overlap). **Why this matters:** the builder card has a fixed `1320px` design width; if you instead drop it into a `display:flex; justify-content:center` parent it becomes a shrinkable flex child, compresses below 1320px, and the header text overlaps. Either scale-to-fit (as here) or give it `flex-shrink:0` inside a horizontally-scrollable container.
+
+---
+
+## Contrast & color rules (non-negotiable)
+The single most important thing to get right. The palette is **warm and light**:
+- **Page background** = cream `#efece6`. **Card / table / modal surfaces** = white `#fff` (subtle bars `#fcfbf8` / `#faf8f3`). **Never** dark-navy surfaces.
+- **Primary action** = olive `#3f6212` with white text. **Never** bright kelly-green or blue. Secondary = white with `#d9d5cb` border; ghost = transparent.
+- **Body text** = `#211f1b` (primary) / `#6f6a60` (muted) / `#a09a8e` (faint) — always on light surfaces, so it stays high-contrast.
+- **Position chips** = light zone tints (`#ecf0e1`/`#f7eed7`/`#e7eef4`) with the zone's darker text color. **Never** dark chips with low-contrast text.
+- **Status / accent pills** use the green/amber/grey trios below — colored text on a matching light tint, never white text on a saturated fill (except the primary button).
+
 ## State Management
 Single owner component holds `batting`, `schedule`, `sort`, `view`, `inning`, `edit`. All derivations are pure functions of `batting` + `schedule` (memoize the heavier ones). `edit` is a descriptor: `{ kind:'cell', id, inn, rect }` or `{ kind:'pos', pos, inn, rect }` (rect = anchor's bounding box for popover placement). No async/data-fetching in the prototype; wire roster + initial schedule to your data layer.
 
@@ -117,6 +149,17 @@ Single owner component holds `batting`, `schedule`, `sort`, `view`, `inning`, `e
 
 **Word-state colors** (bg / fg): Bench `#f1efe8`/`#938e80`, Late `#f8f0db`/`#a16207`, Out `#eae8e1`/`#9a958a`, Absent `#f4f2ec`/`#bdb8ad`.
 
+**Status / accent pills** (text fg / bg / border) — colored text on a light tint, never white-on-saturated:
+| Use | fg | bg | border |
+|---|---|---|---|
+| Positive — Active / Finalized / Fair-play / Home | `#3f6212` | `#eef1e3` | `#dbe3c6` |
+| Caution — Draft / Late / Leaves early | `#a16207` | `#f8f0db` | `#ecdcb6` |
+| Negative — violations / alerts | `#9a3412` | `#f6e7df` | `#eccfc0` |
+| Neutral — Out today / Not started | `#a09a8e` | `#f1efe8` | `#e3e0d8` |
+| Away (game accent) | `#345d86` | `#eef2f6` | `#dbe4ec` |
+
+**Buttons**: primary `bg #3f6212` / `#fff` (hover brightness 1.08); secondary `#fff` / `#211f1b` / border `#d9d5cb`; ghost transparent / `#6f6a60`. Height 42 (sm 34), radius 11 (sm 9). **Toggle**: `42×25`, off `#d8d3c8` / on `#3f6212`, 19px white knob. **Inputs**: height 44, border `#d9d5cb`, focus border `#3f6212` + ring `0 0 0 3px rgba(63,98,18,.13)`.
+
 **Field SVG theme**: grass `#dde6cd`, grass-dark (arc) `#d2dcbd`, lines `#fbfaf6` (fence arc dashed `11 9`), infield `#e6d2ab`, infield edge `#d0b889`, bases `#fdfbf5`, field corner radius 20.
 
 **Radii**: chips/pills 6–11px, cards/popovers 8–16px, round pills 999. **Row height** 48px (grid), 38px (footer). **Shadows**: see card + chip values above; popover `0 10px 40px rgba(30,26,18,.22), 0 0 0 1px rgba(40,35,25,.08)`.
@@ -128,9 +171,12 @@ Single owner component holds `batting`, `schedule`, `sort`, `view`, `inning`, `e
 None external. The logo is a CSS rotated square; the field is inline SVG built from primitive shapes (rects, lines, a quadratic arc, rotated base squares, a home-plate polygon, mound circle). No images, no icon library — all glyphs are inline SVG paths. Recreate icons with your codebase's icon set if preferred.
 
 ## Files (in this bundle)
-- `Diamond Draft.html` — entry point; mounts the builder, sets fonts + the scale-to-fit wrapper.
-- `dd-core.jsx` — mock roster (`PLAYERS`), full 7-inning `SCHEDULE`, `BATTING` order, helpers (`isField`, `getInning`, `battingSlot`, …), `WARNINGS`, `GAME` meta, and the **FieldSVG** backdrop + position geometry (`FIELD_POS`, `FIELD_ORDER`).
-- `dd-grid.jsx` — the whole interactive builder: Grid table, Field diagram, both popovers, drag-reorder, live validation. `window.BuilderGrid`.
-- `Diamond Draft (v1 diamond builder).html` + `builder-clean.jsx` / `builder-ledger.jsx` / `builder-bold.jsx` + `design-canvas.jsx` — earlier exploration of three visual directions on a pan/zoom canvas. **Reference only** — the chosen, current design is `Diamond Draft.html` + `dd-grid.jsx`.
+- **`Diamond Draft App.html`** — **primary entry point.** Mounts the full app (nav + all screens + builder). Open this first.
+- `dd-app.jsx` — app shell: top nav + screen router, and the **Home, Roster, Games, New Game (modal), Settings** screens, the shared `C` token object, small primitives (Pill, Jersey, ZChips), the game-row, and the `FitCard` scale-to-fit wrapper for the embedded builder. `window.DiamondDraftApp`.
+- `dd-grid.jsx` — the interactive lineup builder: Grid table, Field diagram, both popovers, drag-reorder, live validation. `window.BuilderGrid`.
+- `dd-core.jsx` — mock roster (`PLAYERS`), full 7-inning `SCHEDULE`, `BATTING` order, helpers (`isField`, `getInning`, `battingSlot`, …), `WARNINGS`, `GAME` meta, and the **FieldSVG** backdrop + position geometry (`FIELD_POS`, `FIELD_ORDER`). Shared by both.
+- `Diamond Draft.html` — standalone entry for **just the builder** (no app shell), if you want to work on it in isolation.
 
-Implement from `Diamond Draft.html`, `dd-core.jsx`, and `dd-grid.jsx`.
+Load order in HTML: React/ReactDOM/Babel → `dd-core.jsx` → `dd-grid.jsx` → `dd-app.jsx`. Note `dd-app.jsx` re-declares the same color tokens locally (`C`) as `dd-grid.jsx` uses inline — keep them in sync, or lift to one shared token module when you reimplement.
+
+Implement from **`Diamond Draft App.html`** + `dd-app.jsx`, `dd-grid.jsx`, `dd-core.jsx`.
