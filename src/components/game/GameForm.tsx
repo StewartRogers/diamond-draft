@@ -6,12 +6,12 @@ import { useDiamondDraftStore } from "@/lib/store";
 
 export default function GameForm({ onCancel }: { onCancel: () => void }) {
   const createGame = useDiamondDraftStore((s) => s.createGame);
-  const rules = useDiamondDraftStore((s) => s.settings.leagueRules);
+  const defaultTeamName = useDiamondDraftStore((s) => s.settings.teamName);
 
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [opponent, setOpponent] = useState("");
-  const [teamName, setTeamName] = useState("");
-  const [innings, setInnings] = useState(rules.defaultInnings);
+  const [teamName, setTeamName] = useState(defaultTeamName);
+  const [innings, setInnings] = useState(7);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 

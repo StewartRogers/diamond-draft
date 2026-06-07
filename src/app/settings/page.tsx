@@ -6,6 +6,8 @@ import type { LeagueRules } from "@/lib/types";
 
 export default function SettingsPage() {
   const rules = useDiamondDraftStore((s) => s.settings.leagueRules);
+  const teamName = useDiamondDraftStore((s) => s.settings.teamName);
+  const updateSettings = useDiamondDraftStore((s) => s.updateSettings);
   const updateLeagueRules = useDiamondDraftStore((s) => s.updateLeagueRules);
   const exportBackup = useDiamondDraftStore((s) => s.exportBackup);
   const importBackup = useDiamondDraftStore((s) => s.importBackup);
@@ -65,6 +67,12 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  async function handleTeamNameSave(value: string) {
+    await updateSettings({ teamName: value });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
   async function handleExport() {
     const data = await exportBackup();
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -90,6 +98,26 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
         <p className="text-slate-400 text-sm mt-1">Configure league rules and manage your data.</p>
+      </div>
+
+      {/* Team Info */}
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-white">Team Info</h2>
+          {saved && <span className="text-green-400 text-xs font-medium">Saved ✓</span>}
+        </div>
+        <div>
+          <label className="block text-sm text-slate-200 mb-1">Team name</label>
+          <input
+            defaultValue={teamName}
+            onBlur={(e) => handleTeamNameSave(e.currentTarget.value.trim())}
+            placeholder="e.g. Cardinals"
+            className="w-full bg-slate-700 border border-slate-600 rounded-md px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            This will prefill new games unless you override it for a specific game.
+          </p>
+        </div>
       </div>
 
       {/* League Rules */}

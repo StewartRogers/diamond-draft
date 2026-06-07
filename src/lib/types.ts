@@ -150,12 +150,14 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
 
 export type AppSettings = {
   activeSeasonId: string | null;
+  teamName: string;
   leagueRules: LeagueRules;
   onboardingComplete: boolean;
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   activeSeasonId: null,
+  teamName: "",
   leagueRules: DEFAULT_LEAGUE_RULES,
   onboardingComplete: false,
 };

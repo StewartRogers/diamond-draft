@@ -23,7 +23,7 @@ export default function PlayerList() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">
+        <h2 className="text-lg font-semibold text-slate-100">
           Roster{" "}
           <span className="text-slate-500 font-normal text-sm">
             ({players.length} player{players.length !== 1 ? "s" : ""})
@@ -60,7 +60,7 @@ export default function PlayerList() {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-800">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm text-slate-200">
             <thead>
               <tr className="bg-slate-800 text-slate-400 text-left">
                 <th className="px-4 py-3 font-medium w-12">#</th>
@@ -78,7 +78,7 @@ export default function PlayerList() {
                     <td className="px-4 py-3 text-slate-300 font-mono font-semibold">
                       {player.jerseyNumber}
                     </td>
-                    <td className="px-4 py-3 text-white font-medium">
+                    <td className="px-4 py-3 text-slate-100 font-medium">
                       {player.firstName} {player.lastInitial}.
                     </td>
                     <td className="px-4 py-3">
@@ -86,7 +86,7 @@ export default function PlayerList() {
                         {player.eligiblePositions.map((pos) => (
                           <span
                             key={pos}
-                            className="px-1.5 py-0.5 bg-slate-700 text-slate-300 rounded text-xs"
+                          className="px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-xs"
                           >
                             {pos}
                           </span>
@@ -112,7 +112,7 @@ export default function PlayerList() {
                             setEditing(player);
                             setShowForm(false);
                           }}
-                          className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded hover:bg-slate-700 transition-colors"
+                          className="text-slate-400 hover:text-slate-100 text-xs px-2 py-1 rounded hover:bg-slate-700 transition-colors"
                         >
                           Edit
                         </button>
