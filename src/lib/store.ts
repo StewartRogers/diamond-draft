@@ -13,7 +13,8 @@ import type {
   RuleViolation,
 } from "./types";
 import { DEFAULT_APP_SETTINGS } from "./types";
-import * as db from "./db";
+import * as api from "./api";
+import type { FullBackup } from "./api";
 import * as lineupLib from "./lineup";
 import * as seasonLib from "./season";
 import { getComplianceSummary } from "./rules";
@@ -127,8 +128,8 @@ type DiamondDraftActions = {
   revalidate: (gameId: string) => void;
 
   // Data management
-  exportBackup: () => Promise<db.FullBackup>;
-  importBackup: (backup: db.FullBackup) => Promise<void>;
+  exportBackup: () => Promise<FullBackup>;
+  importBackup: (backup: FullBackup) => Promise<void>;
   clearAllData: () => Promise<void>;
 };
 
@@ -153,12 +154,7 @@ export const useDiamondDraftStore = create<
         s.status = "loading";
       });
       try {
-        const [players, games, seasons, settings] = await Promise.all([
-          db.getAllPlayers(),
-          db.getAllGames(),
-          db.getAllSeasons(),
-          db.getSettings(),
-        ]);
+        const { players, games, seasons, settings } = await api.loadAll();
         const normalizedGames = games.map((game) => ({
           ...game,
           pitchCatchAssignments: game.pitchCatchAssignments ?? [],
@@ -183,7 +179,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.settings = next;
       });
-      await db.saveSettings(next);
+      await api.saveSettings(next);
     },
 
     updateLeagueRules: async (updates) => {
@@ -194,7 +190,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.settings = next;
       });
-      await db.saveSettings(next);
+      await api.saveSettings(next);
     },
 
     // ── Players ────────────────────────────────────────────────────────────
@@ -203,7 +199,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.players.push(player);
       });
-      await db.savePlayer(player);
+      await api.createPlayer(player);
       return player;
     },
 
@@ -215,14 +211,14 @@ export const useDiamondDraftStore = create<
         const idx = s.players.findIndex((p) => p.id === id);
         if (idx >= 0) s.players[idx] = updated;
       });
-      await db.savePlayer(updated);
+      await api.savePlayer(updated);
     },
 
     removePlayer: async (id) => {
       set((s) => {
         s.players = s.players.filter((p) => p.id !== id);
       });
-      await db.deletePlayer(id);
+      await api.deletePlayer(id);
     },
 
     // ── Seasons ────────────────────────────────────────────────────────────
@@ -231,7 +227,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.seasons.push(season);
       });
-      await db.saveSeason(season);
+      await api.createSeason(season);
       return season;
     },
 
@@ -240,7 +236,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.settings = next;
       });
-      await db.saveSettings(next);
+      await api.saveSettings(next);
     },
 
     deleteSeason: async (id) => {
@@ -250,7 +246,7 @@ export const useDiamondDraftStore = create<
           s.settings.activeSeasonId = null;
         }
       });
-      await db.deleteSeason(id);
+      await api.deleteSeason(id);
     },
 
     // ── Games ──────────────────────────────────────────────────────────────
@@ -276,7 +272,7 @@ export const useDiamondDraftStore = create<
             const idx = s.seasons.findIndex((s2) => s2.id === activeSeasonId);
             if (idx >= 0) s.seasons[idx] = updated;
           });
-          await db.saveSeason(seasons.find((s) => s.id === activeSeasonId)!);
+          await api.saveSeason(seasons.find((s) => s.id === activeSeasonId)!);
         }
       }
 
@@ -284,7 +280,7 @@ export const useDiamondDraftStore = create<
         s.games.push(game);
         s.activeGameId = game.id;
       });
-      await db.saveGame(game);
+      await api.createGame(game);
       return game;
     },
 
@@ -308,12 +304,11 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
     },
 
     deleteGame: async (id) => {
       const { seasons } = get();
-      // Remove from season
       const updatedSeasons = seasons.map((s) =>
         seasonLib.removeGameFromSeason(s, id)
       );
@@ -323,8 +318,8 @@ export const useDiamondDraftStore = create<
         if (s.activeGameId === id) s.activeGameId = null;
       });
       await Promise.all([
-        db.deleteGame(id),
-        ...updatedSeasons.map(db.saveSeason),
+        api.deleteGame(id),
+        ...updatedSeasons.map(api.saveSeason),
       ]);
     },
 
@@ -349,8 +344,8 @@ export const useDiamondDraftStore = create<
       });
 
       await Promise.all([
-        db.saveGame(updatedGame),
-        db.savePlayers(updatedPlayers),
+        api.saveGame(updatedGame),
+        api.savePlayers(updatedPlayers),
       ]);
     },
 
@@ -373,7 +368,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -395,7 +390,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -416,7 +411,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -437,7 +432,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
     },
 
     addInning: async (gameId) => {
@@ -452,7 +447,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
     },
 
     removeLastInning: async (gameId) => {
@@ -467,7 +462,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -487,7 +482,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -506,7 +501,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -546,7 +541,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
     },
 
@@ -573,7 +568,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
       return result;
     },
@@ -596,7 +591,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
       get().revalidate(gameId);
       return {
         innings: updatedInnings,
@@ -619,7 +614,7 @@ export const useDiamondDraftStore = create<
         const idx = s.games.findIndex((g) => g.id === gameId);
         if (idx >= 0) s.games[idx] = updated;
       });
-      await db.saveGame(updated);
+      await api.saveGame(updated);
     },
 
     // ── Compliance ─────────────────────────────────────────────────────────
@@ -638,15 +633,15 @@ export const useDiamondDraftStore = create<
     },
 
     // ── Data management ────────────────────────────────────────────────────
-    exportBackup: () => db.exportAllData(),
+    exportBackup: () => api.exportAllData(),
 
     importBackup: async (backup) => {
-      await db.importAllData(backup);
+      await api.importAll(backup);
       await get().loadAll();
     },
 
     clearAllData: async () => {
-      await db.clearAllData();
+      await api.clearAll();
       set((s) => {
         s.players = [];
         s.games = [];
