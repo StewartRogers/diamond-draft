@@ -13,19 +13,73 @@ const links = [
 export default function Nav() {
   const pathname = usePathname();
   return (
-    <nav className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center gap-6">
-      <span className="text-white font-bold tracking-tight text-lg mr-4">
-        ⚾ Diamond Draft
-      </span>
+    <nav
+      style={{
+        background: "#fff",
+        borderBottom: "1px solid #e7e4dc",
+        padding: "0 22px",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        height: 52,
+        fontFamily: "'Hanken Grotesk', var(--font-hanken), sans-serif",
+      }}
+    >
+      {/* Logo */}
+      <Link
+        href="/"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          textDecoration: "none",
+          marginRight: 16,
+        }}
+      >
+        <span
+          style={{
+            width: 22,
+            height: 22,
+            transform: "rotate(45deg)",
+            background: "#3f6212",
+            borderRadius: 4,
+            display: "inline-block",
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            fontSize: 15,
+            fontWeight: 800,
+            color: "#211f1b",
+            letterSpacing: "-0.01em",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Diamond Draft
+        </span>
+      </Link>
+
       {links.map(({ href, label }) => (
         <Link
           key={href}
           href={href}
-          className={`text-sm font-medium transition-colors ${
-            pathname === href
-              ? "text-white"
-              : "text-slate-400 hover:text-slate-200"
-          }`}
+          style={{
+            fontSize: 13.5,
+            fontWeight: 600,
+            color:
+              pathname === href || (href !== "/" && pathname.startsWith(href))
+                ? "#3f6212"
+                : "#7c776c",
+            textDecoration: "none",
+            padding: "5px 10px",
+            borderRadius: 7,
+            background:
+              pathname === href || (href !== "/" && pathname.startsWith(href))
+                ? "#eef1e3"
+                : "transparent",
+            transition: "background 0.1s, color 0.1s",
+          }}
         >
           {label}
         </Link>

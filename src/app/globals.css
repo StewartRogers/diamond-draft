@@ -1,21 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #e2e8f0;
+  --background: #efece6;
+  --foreground: #211f1b;
+  --font-sans: var(--font-hanken), 'Hanken Grotesk', sans-serif;
+  --font-mono: var(--font-ibm-mono), 'IBM Plex Mono', monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-hanken), sans-serif;
+  --font-mono: var(--font-ibm-mono), monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
 }
 
 * {
@@ -23,5 +25,5 @@ body {
 }
 
 ::selection {
-  background: rgba(59, 130, 246, 0.35);
+  background: rgba(63, 98, 18, 0.25);
 }

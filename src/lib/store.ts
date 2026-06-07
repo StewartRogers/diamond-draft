@@ -11,6 +11,7 @@ import type {
   PlayerGameOverride,
   LeagueRules,
   RuleViolation,
+  InningAssignment,
 } from "./types";
 import { DEFAULT_APP_SETTINGS } from "./types";
 import * as api from "./api";
@@ -123,6 +124,9 @@ type DiamondDraftActions = {
 
   // Batting order
   setBattingOrder: (gameId: string, order: string[]) => Promise<void>;
+
+  // Direct game innings update (used by LineupBuilder for batch assignments)
+  updateGameInnings: (gameId: string, innings: InningAssignment[]) => Promise<void>;
 
   // Compliance
   revalidate: (gameId: string) => void;
@@ -599,6 +603,19 @@ export const useDiamondDraftStore = create<
         feasible: true,
         warnings: [],
       };
+    },
+
+    // ── Direct innings update ──────────────────────────────────────────────
+    updateGameInnings: async (gameId, innings) => {
+      const game = get().games.find((g) => g.id === gameId);
+      if (!game) return;
+      const updated: Game = { ...game, innings, updatedAt: new Date().toISOString() };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await api.saveGame(updated);
+      get().revalidate(gameId);
     },
 
     // ── Batting order management ──────────────────────────────────────────
