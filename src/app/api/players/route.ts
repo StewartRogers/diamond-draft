@@ -9,6 +9,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const player = (await request.json()) as Player;
+  if (!player?.id || typeof player.id !== "string") {
+    return new Response("Invalid player: missing id", { status: 400 });
+  }
   savePlayer(player);
   return Response.json(player, { status: 201 });
 }

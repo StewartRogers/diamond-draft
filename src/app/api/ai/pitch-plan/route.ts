@@ -21,7 +21,11 @@ function makeModel() {
 }
 
 export async function POST(request: Request) {
-  const { gameId, prompt } = (await request.json()) as PlanRequest;
+  const body = (await request.json()) as PlanRequest;
+  const gameId = typeof body.gameId === "string" ? body.gameId.slice(0, 128) : null;
+  const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 500) : "";
+  if (!gameId) return new Response("Missing gameId", { status: 400 });
+
   const game = getGame(gameId);
   if (!game) return new Response("Game not found", { status: 404 });
 

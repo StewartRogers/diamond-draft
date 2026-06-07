@@ -9,6 +9,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const game = (await request.json()) as Game;
+  if (!game?.id || typeof game.id !== "string") {
+    return new Response("Invalid game: missing id", { status: 400 });
+  }
   saveGame(game);
   return Response.json(game, { status: 201 });
 }
