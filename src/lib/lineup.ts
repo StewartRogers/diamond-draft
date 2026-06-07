@@ -3,6 +3,7 @@ import type {
   Game,
   InningAssignment,
   InningSlot,
+  GamePitchCatchAssignment,
   PlayerGameOverride,
   Player,
   Position,
@@ -34,18 +35,53 @@ export function createEmptyGame(
   totalInnings: number
 ): Game {
   const now = new Date().toISOString();
+  // Default batting order: roster sorted by jersey number
+  const sorted = [...rosterSnapshot].sort((a, b) =>
+    Number(a.jerseyNumber) - Number(b.jerseyNumber)
+  );
+  const battingOrder = sorted.map((p) => p.id);
   return {
     id: uuidv4(),
     ...params,
+    pitchCatchAssignments: [],
     innings: Array.from({ length: totalInnings }, (_, i) =>
       createEmptyInning(i + 1)
     ),
+    battingOrder,
     playerOverrides: [],
     rosterSnapshot,
     status: "draft",
     createdAt: now,
     updatedAt: now,
   };
+}
+
+export function upsertPitchCatchAssignment(
+  assignments: GamePitchCatchAssignment[],
+  inning: number,
+  position: "P" | "C",
+  playerId: string | null
+): GamePitchCatchAssignment[] {
+  const existing = assignments.find((a) => a.inning === inning);
+  if (existing) {
+    return assignments.map((a) =>
+      a.inning === inning
+        ? {
+            ...a,
+            pitcherId: position === "P" ? playerId : a.pitcherId,
+            catcherId: position === "C" ? playerId : a.catcherId,
+          }
+        : a
+    );
+  }
+  return [
+    ...assignments,
+    {
+      inning,
+      pitcherId: position === "P" ? playerId : null,
+      catcherId: position === "C" ? playerId : null,
+    },
+  ].sort((a, b) => a.inning - b.inning);
 }
 
 // ─── Inning manipulation ──────────────────────────────────────────────────────

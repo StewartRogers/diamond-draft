@@ -1,6 +1,6 @@
 "use client";
 
-import { use } from "react";
+import { use, useEffect } from "react";
 import Link from "next/link";
 import { useDiamondDraftStore } from "@/lib/store";
 import LineupGrid from "@/components/game/LineupGrid";
@@ -15,10 +15,12 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
 
   const game = games.find((g) => g.id === id);
 
-  // Set as active game on first render
-  if (game && activeGameId !== id) {
-    setActiveGame(id);
-  }
+  // Set as active game after render to avoid setState during render
+  useEffect(() => {
+    if (game && activeGameId !== id) {
+      setActiveGame(id);
+    }
+  }, [game, activeGameId, id, setActiveGame]);
 
   if (!game) {
     return (

@@ -1,153 +1,5 @@
-import { openDB, type IDBPDatabase } from "idb";
-import type { Player, Game, Season, AppSettings } from "./types";
+import type { AppSettings, Game, Player, Season } from "./types";
 import { DEFAULT_APP_SETTINGS } from "./types";
-
-const DB_NAME = "diamond-draft";
-const DB_VERSION = 1;
-
-type DiamondDraftDB = {
-  players: {
-    key: string;
-    value: Player;
-  };
-  games: {
-    key: string;
-    value: Game;
-    indexes: { "by-date": string };
-  };
-  seasons: {
-    key: string;
-    value: Season;
-  };
-  settings: {
-    key: string;
-    value: AppSettings & { id: string };
-  };
-};
-
-let dbInstance: IDBPDatabase<DiamondDraftDB> | null = null;
-
-async function getDB(): Promise<IDBPDatabase<DiamondDraftDB>> {
-  if (dbInstance) return dbInstance;
-  dbInstance = await openDB<DiamondDraftDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains("players")) {
-        db.createObjectStore("players", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("games")) {
-        const gameStore = db.createObjectStore("games", { keyPath: "id" });
-        gameStore.createIndex("by-date", "date");
-      }
-      if (!db.objectStoreNames.contains("seasons")) {
-        db.createObjectStore("seasons", { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains("settings")) {
-        db.createObjectStore("settings", { keyPath: "id" });
-      }
-    },
-  });
-  return dbInstance;
-}
-
-// ─── Players ──────────────────────────────────────────────────────────────────
-
-export async function getAllPlayers(): Promise<Player[]> {
-  const db = await getDB();
-  return db.getAll("players");
-}
-
-export async function getPlayer(id: string): Promise<Player | undefined> {
-  const db = await getDB();
-  return db.get("players", id);
-}
-
-export async function savePlayer(player: Player): Promise<void> {
-  const db = await getDB();
-  await db.put("players", player);
-}
-
-export async function deletePlayer(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete("players", id);
-}
-
-export async function savePlayers(players: Player[]): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction("players", "readwrite");
-  await Promise.all([...players.map((p) => tx.store.put(p)), tx.done]);
-}
-
-// ─── Games ────────────────────────────────────────────────────────────────────
-
-export async function getAllGames(): Promise<Game[]> {
-  const db = await getDB();
-  return db.getAll("games");
-}
-
-export async function getGame(id: string): Promise<Game | undefined> {
-  const db = await getDB();
-  return db.get("games", id);
-}
-
-export async function saveGame(game: Game): Promise<void> {
-  const db = await getDB();
-  await db.put("games", game);
-}
-
-export async function deleteGame(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete("games", id);
-}
-
-export async function getGamesByDateRange(
-  from: string,
-  to: string
-): Promise<Game[]> {
-  const db = await getDB();
-  return db.getAllFromIndex("games", "by-date", IDBKeyRange.bound(from, to));
-}
-
-// ─── Seasons ──────────────────────────────────────────────────────────────────
-
-export async function getAllSeasons(): Promise<Season[]> {
-  const db = await getDB();
-  return db.getAll("seasons");
-}
-
-export async function getSeason(id: string): Promise<Season | undefined> {
-  const db = await getDB();
-  return db.get("seasons", id);
-}
-
-export async function saveSeason(season: Season): Promise<void> {
-  const db = await getDB();
-  await db.put("seasons", season);
-}
-
-export async function deleteSeason(id: string): Promise<void> {
-  const db = await getDB();
-  await db.delete("seasons", id);
-}
-
-// ─── Settings ─────────────────────────────────────────────────────────────────
-
-const SETTINGS_KEY = "app-settings";
-
-export async function getSettings(): Promise<AppSettings> {
-  const db = await getDB();
-  const row = await db.get("settings", SETTINGS_KEY);
-  if (!row) return { ...DEFAULT_APP_SETTINGS };
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { id: _id, ...settings } = row;
-  return settings;
-}
-
-export async function saveSettings(settings: AppSettings): Promise<void> {
-  const db = await getDB();
-  await db.put("settings", { ...settings, id: SETTINGS_KEY });
-}
-
-// ─── Export / Import (full backup) ───────────────────────────────────────────
 
 export type FullBackup = {
   version: number;
@@ -158,6 +10,73 @@ export type FullBackup = {
   settings: AppSettings;
 };
 
+async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(input, {
+    cache: "no-store",
+    ...init,
+    headers: {
+      ...(init?.headers ?? {}),
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(`Request failed: ${input}`);
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ─── Players ──────────────────────────────────────────────────────────────────
+
+export const getAllPlayers = () => requestJson<Player[]>("/api/players");
+export const getPlayer = (id: string) => requestJson<Player | undefined>(`/api/players/${id}`);
+export const savePlayer = (player: Player) =>
+  requestJson<Player>(`/api/players/${player.id}`, {
+    method: "PUT",
+    body: JSON.stringify(player),
+  });
+export const deletePlayer = (id: string) =>
+  requestJson<void>(`/api/players/${id}`, { method: "DELETE" });
+export const savePlayers = async (players: Player[]) => {
+  await Promise.all(players.map(savePlayer));
+};
+
+// ─── Games ────────────────────────────────────────────────────────────────────
+
+export const getAllGames = () => requestJson<Game[]>("/api/games");
+export const getGame = (id: string) => requestJson<Game | undefined>(`/api/games/${id}`);
+export const saveGame = (game: Game) =>
+  requestJson<Game>(`/api/games/${game.id}`, {
+    method: "PUT",
+    body: JSON.stringify(game),
+  });
+export const deleteGame = (id: string) =>
+  requestJson<void>(`/api/games/${id}`, { method: "DELETE" });
+export const getGamesByDateRange = async (from: string, to: string) =>
+  (await getAllGames()).filter((g) => g.date >= from && g.date <= to);
+
+// ─── Seasons ──────────────────────────────────────────────────────────────────
+
+export const getAllSeasons = () => requestJson<Season[]>("/api/seasons");
+export const getSeason = (id: string) => requestJson<Season | undefined>(`/api/seasons/${id}`);
+export const saveSeason = (season: Season) =>
+  requestJson<Season>(`/api/seasons/${season.id}`, {
+    method: "PUT",
+    body: JSON.stringify(season),
+  });
+export const deleteSeason = (id: string) =>
+  requestJson<void>(`/api/seasons/${id}`, { method: "DELETE" });
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
+export const getSettings = async () =>
+  (await requestJson<AppSettings>("/api/settings")) ?? { ...DEFAULT_APP_SETTINGS };
+export const saveSettings = (settings: AppSettings) =>
+  requestJson<AppSettings>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+
+// ─── Export / Import (full backup) ───────────────────────────────────────────
+
 export async function exportAllData(): Promise<FullBackup> {
   const [players, games, seasons, settings] = await Promise.all([
     getAllPlayers(),
@@ -166,7 +85,7 @@ export async function exportAllData(): Promise<FullBackup> {
     getSettings(),
   ]);
   return {
-    version: DB_VERSION,
+    version: 1,
     exportedAt: new Date().toISOString(),
     players,
     games,
@@ -176,35 +95,17 @@ export async function exportAllData(): Promise<FullBackup> {
 }
 
 export async function importAllData(backup: FullBackup): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction(["players", "games", "seasons", "settings"], "readwrite");
-
-  // Clear existing data
-  await Promise.all([
-    tx.objectStore("players").clear(),
-    tx.objectStore("games").clear(),
-    tx.objectStore("seasons").clear(),
-    tx.objectStore("settings").clear(),
-  ]);
-
-  // Write backup data
-  await Promise.all([
-    ...backup.players.map((p) => tx.objectStore("players").put(p)),
-    ...backup.games.map((g) => tx.objectStore("games").put(g)),
-    ...backup.seasons.map((s) => tx.objectStore("seasons").put(s)),
-    tx.objectStore("settings").put({ ...backup.settings, id: SETTINGS_KEY }),
-    tx.done,
-  ]);
+  await requestJson("/api/state", {
+    method: "PUT",
+    body: JSON.stringify({
+      players: backup.players,
+      games: backup.games,
+      seasons: backup.seasons,
+      settings: backup.settings,
+    }),
+  });
 }
 
-export async function clearAllData(): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction(["players", "games", "seasons", "settings"], "readwrite");
-  await Promise.all([
-    tx.objectStore("players").clear(),
-    tx.objectStore("games").clear(),
-    tx.objectStore("seasons").clear(),
-    tx.objectStore("settings").clear(),
-    tx.done,
-  ]);
-}
+export const clearAllData = () =>
+  requestJson<void>("/api/state", { method: "DELETE" });
+

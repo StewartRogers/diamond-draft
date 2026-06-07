@@ -55,6 +55,12 @@ export type PlayerGameOverride = {
   inning?: number;
 };
 
+export type GamePitchCatchAssignment = {
+  inning: number;
+  pitcherId: string | null;
+  catcherId: string | null;
+};
+
 // ─── Lineup ───────────────────────────────────────────────────────────────────
 
 export type InningSlot = {
@@ -78,8 +84,12 @@ export type Game = {
   opponent?: string;
   teamName?: string;
   notes?: string;
+  /** Optional per-inning pitcher/catcher plan used to lock autofill workarounds. */
+  pitchCatchAssignments: GamePitchCatchAssignment[];
   /** Ordered list of innings (1-based index = inning number - 1) */
   innings: InningAssignment[];
+  /** Batting order for this game: ordered list of player IDs */
+  battingOrder: string[];
   /** Per-player status overrides for this game */
   playerOverrides: PlayerGameOverride[];
   /** Snapshot of the roster at the time of the game */
@@ -163,6 +173,8 @@ export type ViolationCode =
   | "PLAYER_ABSENT_ASSIGNED"
   | "PLAYER_NOT_YET_ARRIVED"
   | "PLAYER_ALREADY_DEPARTED"
+  | "PLAYER_MULTIPLE_POSITIONS"
+  | "PITCHING_TOO_SOON"
   | "DUPLICATE_POSITION"
   | "MISSING_POSITION"
   | "TOO_FEW_FIELD_PLAYERS"

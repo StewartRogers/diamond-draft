@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import type { Player } from "@/lib/types";
 import { useDiamondDraftStore } from "@/lib/store";
 import PlayerForm from "./PlayerForm";
@@ -73,11 +73,8 @@ export default function PlayerList() {
             </thead>
             <tbody>
               {sorted.map((player) => (
-                <>
-                  <tr
-                    key={player.id}
-                    className="border-t border-slate-800 hover:bg-slate-800/50 transition-colors"
-                  >
+                <React.Fragment key={player.id}>
+                  <tr className="border-t border-slate-800 hover:bg-slate-800/50 transition-colors">
                     <td className="px-4 py-3 text-slate-300 font-mono font-semibold">
                       {player.jerseyNumber}
                     </td>
@@ -172,7 +169,7 @@ export default function PlayerList() {
                       </td>
                     </tr>
                   )}
-                </>
+                </React.Fragment>
               ))}
             </tbody>
           </table>
