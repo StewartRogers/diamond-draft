@@ -17,6 +17,7 @@ import * as db from "./db";
 import * as lineupLib from "./lineup";
 import * as seasonLib from "./season";
 import { getComplianceSummary } from "./rules";
+import { buildAutoLineup, fillSingleInning, type AutoLineupResult } from "./autoLineup";
 
 // ─── State shape ──────────────────────────────────────────────────────────────
 
@@ -108,6 +109,10 @@ type DiamondDraftActions = {
     override: PlayerGameOverride
   ) => Promise<void>;
   removePlayerOverride: (gameId: string, playerId: string) => Promise<void>;
+
+  // Auto-lineup
+  autoFillGame: (gameId: string) => Promise<AutoLineupResult>;
+  autoFillInning: (gameId: string, inning: number) => Promise<AutoLineupResult>;
 
   // Compliance
   revalidate: (gameId: string) => void;
@@ -483,6 +488,62 @@ export const useDiamondDraftStore = create<
       });
       await db.saveGame(updated);
       get().revalidate(gameId);
+    },
+
+    // ── Auto-lineup ────────────────────────────────────────────────────────
+    autoFillGame: async (gameId) => {
+      const { games, players, settings } = get();
+      const game = games.find((g) => g.id === gameId);
+      if (!game) return { innings: [], log: [], feasible: false, warnings: ["Game not found."] };
+
+      const result = buildAutoLineup(
+        players,
+        game.innings,
+        game.playerOverrides,
+        settings.leagueRules,
+        game
+      );
+
+      const updated: Game = {
+        ...game,
+        innings: result.innings,
+        updatedAt: new Date().toISOString(),
+      };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await db.saveGame(updated);
+      get().revalidate(gameId);
+      return result;
+    },
+
+    autoFillInning: async (gameId, inning) => {
+      const { games, players, settings } = get();
+      const game = games.find((g) => g.id === gameId);
+      if (!game) return { innings: [], log: [], feasible: false, warnings: ["Game not found."] };
+
+      const filledInning = fillSingleInning(inning, players, game, settings.leagueRules);
+      const updatedInnings = game.innings.map((inn) =>
+        inn.inning === inning ? filledInning : inn
+      );
+      const updated: Game = {
+        ...game,
+        innings: updatedInnings,
+        updatedAt: new Date().toISOString(),
+      };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await db.saveGame(updated);
+      get().revalidate(gameId);
+      return {
+        innings: updatedInnings,
+        log: [`Inning ${inning} auto-filled.`],
+        feasible: true,
+        warnings: [],
+      };
     },
 
     // ── Compliance ─────────────────────────────────────────────────────────

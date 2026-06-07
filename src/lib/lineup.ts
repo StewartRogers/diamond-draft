@@ -1,12 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import type {
   Game,
-  Player,
   InningAssignment,
   InningSlot,
   PlayerGameOverride,
+  Player,
   Position,
-  LeagueRules,
 } from "./types";
 import { FIELD_POSITIONS, SPECIAL_POSITIONS } from "./types";
 
@@ -205,93 +204,6 @@ export function mergeRosterIntoSnapshot(
     }
   }
   return merged;
-}
-
-// ─── Auto-suggest lineup ──────────────────────────────────────────────────────
-
-/**
- * For a given inning, suggest a player assignment based on:
- * 1. Position eligibility
- * 2. Who hasn't played the most innings yet
- * 3. Avoiding back-to-back bench
- *
- * Returns a map of position → playerId (only for positions that can be filled).
- */
-export function suggestInningAssignment(
-  inningNumber: number,
-  previousInnings: InningAssignment[],
-  availablePlayers: Player[],
-  overrides: PlayerGameOverride[],
-  rules: LeagueRules
-): Map<Position, string> {
-  const result = new Map<Position, string>();
-  const assigned = new Set<string>();
-
-  // Count field innings played so far per player
-  const fieldInningCount = new Map<string, number>();
-  for (const player of availablePlayers) {
-    const count = previousInnings.reduce((sum, inn) => {
-      const slot = inn.slots.find(
-        (s) => s.playerId === player.id && s.position !== "Bench"
-      );
-      return sum + (slot ? 1 : 0);
-    }, 0);
-    fieldInningCount.set(player.id, count);
-  }
-
-  // Determine who was on bench last inning (back-to-back check)
-  const lastInning = previousInnings
-    .filter((inn) => inn.inning < inningNumber)
-    .sort((a, b) => b.inning - a.inning)[0];
-
-  const benchedLastInning = new Set<string>(
-    lastInning?.slots
-      .filter((s) => s.position === "Bench" && s.playerId)
-      .map((s) => s.playerId!) ?? []
-  );
-
-  // Filter truly available players
-  const presentPlayers = availablePlayers.filter((p) => {
-    const override = overrides.find((o) => o.playerId === p.id);
-    if (!override) return true;
-    if (override.status === "absent") return false;
-    if (override.status === "late" && override.inning != null)
-      return inningNumber >= override.inning;
-    if (override.status === "earlyLeave" && override.inning != null)
-      return inningNumber <= override.inning;
-    return true;
-  });
-
-  // Sort: prioritise those who've played fewer innings, penalise back-to-back bench candidates
-  const sorted = [...presentPlayers].sort((a, b) => {
-    const aCount = fieldInningCount.get(a.id) ?? 0;
-    const bCount = fieldInningCount.get(b.id) ?? 0;
-    const aBench = benchedLastInning.has(a.id) ? -10 : 0; // strong preference to play
-    const bBench = benchedLastInning.has(b.id) ? -10 : 0;
-    return aCount + aBench - (bCount + bBench);
-  });
-
-  // Assign field positions
-  for (const pos of FIELD_POSITIONS) {
-    const candidate = sorted.find(
-      (p) =>
-        !assigned.has(p.id) &&
-        (!rules.enforcePositionEligibility || p.eligiblePositions.includes(pos))
-    );
-    if (candidate) {
-      result.set(pos, candidate.id);
-      assigned.add(candidate.id);
-    }
-  }
-
-  // Remaining players go to Bench
-  for (const player of sorted) {
-    if (!assigned.has(player.id)) {
-      result.set("Bench", player.id);
-    }
-  }
-
-  return result;
 }
 
 // ─── Display helpers ──────────────────────────────────────────────────────────
