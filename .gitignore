@@ -42,6 +42,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# SQLite WAL/SHM journal files (runtime, not source)
+data/*.sqlite3-wal
+data/*.sqlite3-shm
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
