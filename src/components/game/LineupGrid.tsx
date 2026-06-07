@@ -111,26 +111,13 @@ export default function LineupGrid({ game, players, violations }: Props) {
     setPitchCatchAssignment(game.id, inning, position, playerId);
   }
 
-  // Rows: all players in the roster snapshot, sorted by jersey number
-  // Use battingOrder if present, fallback to jersey number sort
+  // Rows: all players in the roster snapshot, sorted by batting order
   const sortedPlayers = (game.battingOrder && game.battingOrder.length > 0
     ? game.battingOrder.map((id) => playerMap.get(id)).filter(Boolean) as Player[]
     : [...game.rosterSnapshot].sort((a, b) => Number(a.jerseyNumber) - Number(b.jerseyNumber))
   );
 
   const setBattingOrder = useDiamondDraftStore((s) => s.setBattingOrder);
-
-  function movePlayer(playerId: string, dir: "up" | "down") {
-    const order = game.battingOrder && game.battingOrder.length > 0
-      ? [...game.battingOrder]
-      : [...game.rosterSnapshot].sort((a, b) => Number(a.jerseyNumber) - Number(b.jerseyNumber)).map((p) => p.id);
-    const idx = order.indexOf(playerId);
-    if (idx === -1) return;
-    const swapIdx = dir === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= order.length) return;
-    [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
-    setBattingOrder(game.id, order);
-  }
 
   // Drag-and-drop handlers
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -394,6 +381,9 @@ export default function LineupGrid({ game, players, violations }: Props) {
           </thead>
           <tbody>
             {sortedPlayers.map((player) => {
+              const battingIndex = game.battingOrder && game.battingOrder.length > 0
+                ? game.battingOrder.indexOf(player.id) + 1
+                : sortedPlayers.findIndex((p) => p.id === player.id) + 1;
               const override = overrideMap.get(player.id);
               const isAbsent = override?.status === "absent";
               const playerViolations = violations.filter(
@@ -416,6 +406,14 @@ export default function LineupGrid({ game, players, violations }: Props) {
                   {/* Player name cell */}
                   <td className="sticky left-0 z-10 bg-slate-900 px-3 py-2.5 border-r border-slate-800">
                     <div className="flex items-center gap-2">
+                      {game.status !== "finalized" && (
+                        <span
+                          className="cursor-grab select-none rounded border border-slate-700 bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold tracking-widest text-slate-400"
+                          title="Drag to reorder batting order"
+                        >
+                          ::
+                        </span>
+                      )}
                       {hasError && (
                         <span className="text-red-500 text-xs" title="Rule violation">●</span>
                       )}
@@ -429,33 +427,12 @@ export default function LineupGrid({ game, players, violations }: Props) {
                         <span className="text-white font-medium text-xs block leading-tight">
                           {player.firstName} {player.lastInitial}.
                         </span>
-                        <span className="text-slate-500 text-[11px] font-mono">
-                          #{player.jerseyNumber}
+                        <span className="text-slate-500 text-[11px] font-mono flex items-center gap-2">
+                          <span>#{player.jerseyNumber}</span>
+                          <span className="text-slate-600">Order {battingIndex}</span>
                         </span>
                       </div>
                     </div>
-                  </td>
-
-                  {/* Batting order controls */}
-                  <td className="px-2 py-2 border-r border-slate-800 w-24">
-                    {game.status !== "finalized" && (
-                      <div className="flex flex-col gap-1">
-                        <button
-                          onClick={() => movePlayer(player.id, "up")}
-                          className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded"
-                          title="Move up in batting order"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => movePlayer(player.id, "down")}
-                          className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded"
-                          title="Move down in batting order"
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    )}
                   </td>
 
                   {/* Inning cells */}

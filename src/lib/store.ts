@@ -13,24 +13,11 @@ import type {
   RuleViolation,
 } from "./types";
 import { DEFAULT_APP_SETTINGS } from "./types";
-import { FIELD_POSITIONS } from "./types";
 import * as db from "./db";
 import * as lineupLib from "./lineup";
 import * as seasonLib from "./season";
 import { getComplianceSummary } from "./rules";
 import { buildAutoLineup, fillSingleInning, type AutoLineupResult } from "./autoLineup";
-
-const DEFAULT_ROSTER_SEED = [
-  { firstName: "Aiden", lastInitial: "A", jerseyNumber: "1" },
-  { firstName: "Brooks", lastInitial: "B", jerseyNumber: "2" },
-  { firstName: "Carter", lastInitial: "C", jerseyNumber: "3" },
-  { firstName: "Declan", lastInitial: "D", jerseyNumber: "4" },
-  { firstName: "Eli", lastInitial: "E", jerseyNumber: "5" },
-  { firstName: "Finn", lastInitial: "F", jerseyNumber: "6" },
-  { firstName: "Gabe", lastInitial: "G", jerseyNumber: "7" },
-  { firstName: "Hudson", lastInitial: "H", jerseyNumber: "8" },
-  { firstName: "Ira", lastInitial: "I", jerseyNumber: "9" },
-] as const;
 
 // ─── State shape ──────────────────────────────────────────────────────────────
 
@@ -176,23 +163,8 @@ export const useDiamondDraftStore = create<
           ...game,
           pitchCatchAssignments: game.pitchCatchAssignments ?? [],
         }));
-        const shouldSeedRoster = players.length === 0;
-        const seededPlayers = shouldSeedRoster
-          ? DEFAULT_ROSTER_SEED.map((player) =>
-              seasonLib.createPlayer({
-                ...player,
-                eligiblePositions: [...FIELD_POSITIONS],
-                isGuest: false,
-                pitchingLimitGame: 3,
-                pitchingLimitSeason: 0,
-              })
-            )
-          : players;
-        if (shouldSeedRoster) {
-          await db.savePlayers(seededPlayers);
-        }
         set((s) => {
-          s.players = seededPlayers;
+          s.players = players;
           s.games = normalizedGames;
           s.seasons = seasons;
           s.settings = settings;
@@ -285,7 +257,14 @@ export const useDiamondDraftStore = create<
     createGame: async (params, totalInnings) => {
       const { players, settings, seasons } = get();
       const innings = totalInnings ?? settings.leagueRules.defaultInnings;
-      const game = lineupLib.createEmptyGame(params, players, innings);
+      const game = lineupLib.createEmptyGame(
+        {
+          ...params,
+          teamName: params.teamName?.trim() || settings.teamName || undefined,
+        },
+        players,
+        innings
+      );
 
       // Attach to active season
       const activeSeasonId = settings.activeSeasonId;
