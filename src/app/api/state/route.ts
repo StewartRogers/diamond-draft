@@ -31,11 +31,20 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const backup = (await request.json()) as Backup;
+  if (!backup || typeof backup !== "object") {
+    return new Response("Invalid backup body", { status: 400 });
+  }
   clearAllData();
-  for (const player of backup.players ?? []) savePlayer(player);
-  for (const game of backup.games ?? []) saveGame(game);
-  for (const season of backup.seasons ?? []) saveSeason(season);
-  saveSettings(backup.settings);
+  for (const player of backup.players ?? []) {
+    if (player?.id && typeof player.id === "string") savePlayer(player);
+  }
+  for (const game of backup.games ?? []) {
+    if (game?.id && typeof game.id === "string") saveGame(game);
+  }
+  for (const season of backup.seasons ?? []) {
+    if (season?.id && typeof season.id === "string") saveSeason(season);
+  }
+  if (backup.settings && typeof backup.settings === "object") saveSettings(backup.settings);
   return Response.json({ ok: true });
 }
 

@@ -13,6 +13,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const game = (await request.json()) as Game;
+  if (!game || typeof game !== "object") {
+    return new Response("Invalid game body", { status: 400 });
+  }
   saveGame({ ...game, id });
   return Response.json({ ...game, id });
 }
