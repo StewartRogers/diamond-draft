@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Player } from "@/lib/types";
 import PlayerForm from "@/components/roster/PlayerForm";
@@ -106,8 +106,8 @@ export default function RosterPage() {
               {filtered.map((player) => {
                 const s = STATUS_PILL.active; // default — per-game status comes from overrides
                 return (
-                  <>
-                    <tr key={player.id} style={{ cursor: "pointer" }}>
+                  <React.Fragment key={player.id}>
+                    <tr style={{ cursor: "pointer" }}>
                       <td><Jersey num={player.jerseyNumber} /></td>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -162,7 +162,7 @@ export default function RosterPage() {
 
                     {/* Inline edit */}
                     {editing?.id === player.id && (
-                      <tr key={`${player.id}-edit`}>
+                      <tr>
                         <td colSpan={6} style={{ background: "#faf8f3", padding: "20px 24px" }}>
                           <PlayerForm
                             initial={editing}
@@ -175,7 +175,7 @@ export default function RosterPage() {
 
                     {/* Confirm delete */}
                     {confirmDelete === player.id && (
-                      <tr key={`${player.id}-del`}>
+                      <tr>
                         <td colSpan={6} style={{ background: "#fdf2f1", padding: "12px 24px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13 }}>
                             <span style={{ color: C.red }}>
@@ -198,7 +198,7 @@ export default function RosterPage() {
                         </td>
                       </tr>
                     )}
-                  </>
+              </React.Fragment>
                 );
               })}
             </tbody>
