@@ -807,44 +807,14 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
 
   const editKey = edit && edit.kind === "cell" ? edit.id + ":" + edit.inn : null;
 
-  // ── Scale to fit ──────────────────────────────────────────────────────────
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  useEffect(() => {
-    const measure = () => {
-      const vw = window.innerWidth;
-      setScale(Math.min(1, (vw - 32) / 1320));
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
-
-  const cardStyle: React.CSSProperties = {
-    width: 1320,
-    background: "#fff",
-    border: "1px solid #e7e4dc",
-    borderRadius: 16,
-    overflow: "hidden",
-    boxShadow: "0 1px 3px rgba(40,35,25,.06), 0 18px 50px rgba(40,35,25,.07)",
-    transformOrigin: "top left",
-    transform: `scale(${scale})`,
-  };
-
-  const outerStyle: React.CSSProperties = {
-    display: "flex",
-    justifyContent: "center",
-    padding: "24px 16px",
-    // Reserve the correct vertical space accounting for scale
-    paddingBottom: `calc(24px + ${Math.round((1 - scale) * -560)}px)`,
-  };
-
   const game_date = new Date(game.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
 
+  // FitCard in the game page handles scale-to-fit. LineupBuilder renders the
+  // raw 1320px card with no transform — keeping it transform-free prevents
+  // double-scaling and header text overlap.
   return (
-    <div style={outerStyle}>
-      <div ref={wrapRef} style={{ width: 1320, transformOrigin: "top left", transform: `scale(${scale})` }}>
-        <div className="ddg" style={{ width: 1320, background: "#fff", border: "1px solid #e7e4dc", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(40,35,25,.06), 0 18px 50px rgba(40,35,25,.07)" }}>
+    <div>
+      <div className="ddg" style={{ width: 1320, background: "#fff", border: "1px solid #e7e4dc", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(40,35,25,.06), 0 18px 50px rgba(40,35,25,.07)" }}>
           <style>{CSS}</style>
 
           {/* ── Header ── */}
@@ -1004,7 +974,6 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
             <PositionPopover target={edit} schedule={schedule} batting={batting} players={players} onAssign={assign} onClose={() => setEdit(null)} />
           )}
         </div>
-      </div>
     </div>
   );
 }
