@@ -20,6 +20,10 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+### Dependency note
+
+The app uses a `postcss` override in `package.json` to keep the transitive PostCSS dependency on a patched version. If you update dependencies, keep an eye on that override so the audit stays clean without breaking the Next.js toolchain.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -109,10 +109,19 @@ type DiamondDraftActions = {
     override: PlayerGameOverride
   ) => Promise<void>;
   removePlayerOverride: (gameId: string, playerId: string) => Promise<void>;
+  setPitchCatchAssignment: (
+    gameId: string,
+    inning: number,
+    position: "P" | "C",
+    playerId: string | null
+  ) => Promise<void>;
 
   // Auto-lineup
   autoFillGame: (gameId: string) => Promise<AutoLineupResult>;
   autoFillInning: (gameId: string, inning: number) => Promise<AutoLineupResult>;
+
+  // Batting order
+  setBattingOrder: (gameId: string, order: string[]) => Promise<void>;
 
   // Compliance
   revalidate: (gameId: string) => void;
@@ -150,9 +159,13 @@ export const useDiamondDraftStore = create<
           db.getAllSeasons(),
           db.getSettings(),
         ]);
+        const normalizedGames = games.map((game) => ({
+          ...game,
+          pitchCatchAssignments: game.pitchCatchAssignments ?? [],
+        }));
         set((s) => {
           s.players = players;
-          s.games = games;
+          s.games = normalizedGames;
           s.seasons = seasons;
           s.settings = settings;
           s.status = "ready";
@@ -490,6 +503,46 @@ export const useDiamondDraftStore = create<
       get().revalidate(gameId);
     },
 
+    setPitchCatchAssignment: async (gameId, inning, position, playerId) => {
+      const game = get().games.find((g) => g.id === gameId);
+      if (!game) return;
+      const updatedAssignments = lineupLib.upsertPitchCatchAssignment(
+        game.pitchCatchAssignments ?? [],
+        inning,
+        position,
+        playerId
+      );
+      const updatedInnings = lineupLib.assignPlayerToSlot(
+        game.innings,
+        inning,
+        position,
+        playerId
+      ).map((inn) =>
+        inn.inning === inning
+          ? {
+              ...inn,
+              slots: inn.slots.map((slot) =>
+                slot.position === position
+                  ? { ...slot, locked: playerId !== null }
+                  : slot
+              ),
+            }
+          : inn
+      );
+      const updated: Game = {
+        ...game,
+        pitchCatchAssignments: updatedAssignments,
+        innings: updatedInnings,
+        updatedAt: new Date().toISOString(),
+      };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await db.saveGame(updated);
+      get().revalidate(gameId);
+    },
+
     // ── Auto-lineup ────────────────────────────────────────────────────────
     autoFillGame: async (gameId) => {
       const { games, players, settings } = get();
@@ -544,6 +597,22 @@ export const useDiamondDraftStore = create<
         feasible: true,
         warnings: [],
       };
+    },
+
+    // ── Batting order management ──────────────────────────────────────────
+    setBattingOrder: async (gameId, order) => {
+      const game = get().games.find((g) => g.id === gameId);
+      if (!game) return;
+      const updated: Game = {
+        ...game,
+        battingOrder: order,
+        updatedAt: new Date().toISOString(),
+      };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await db.saveGame(updated);
     },
 
     // ── Compliance ─────────────────────────────────────────────────────────

@@ -111,6 +111,24 @@ function consecutiveBenchInnings(
   return count;
 }
 
+/** Returns the last inning number ( < beforeInning) when the player pitched, or null. */
+function lastInningPitchedBefore(
+  playerId: string,
+  innings: InningAssignment[],
+  beforeInning: number
+): number | null {
+  const filtered = innings
+    .filter((inn) => inn.inning < beforeInning)
+    .sort((a, b) => b.inning - a.inning);
+  for (const inn of filtered) {
+    const slot = inn.slots.find(
+      (s) => s.playerId === playerId && isPitchingPosition(s.position)
+    );
+    if (slot) return inn.inning;
+  }
+  return null;
+}
+
 /** Count total field innings for a player across all innings. */
 function totalFieldInnings(
   playerId: string,
@@ -139,6 +157,25 @@ export function validateInning(
   const assignedSlots = slots.filter((s) => s.playerId !== null);
   const fieldSlots = assignedSlots.filter((s) => isFieldPosition(s.position));
   const fieldPlayerIds = new Set(fieldSlots.map((s) => s.playerId!));
+
+  // ── Detect a player assigned multiple positions in the same inning ───────
+  const playerCounts = new Map<string, number>();
+  for (const s of assignedSlots) {
+    const id = s.playerId!;
+    playerCounts.set(id, (playerCounts.get(id) ?? 0) + 1);
+  }
+  for (const [playerId, count] of playerCounts) {
+    if (count > 1) {
+      const p = playerMap.get(playerId);
+      violations.push({
+        code: "PLAYER_MULTIPLE_POSITIONS",
+        severity: "error",
+        message: `Inning ${inning}: ${p?.firstName ?? "Player"} ${p?.lastInitial ?? ""}. assigned to ${count} positions at once.`,
+        playerId,
+        inning,
+      });
+    }
+  }
 
   // ── Too few / too many field players ────────────────────────────────────────
   if (fieldSlots.length < rules.minFieldPlayers) {
@@ -251,6 +288,24 @@ export function validateInning(
             inning,
             position: slot.position,
           });
+        }
+      }
+
+      // ── Enforce pitching rest between appearances (no pitching, sitting, then pitching)
+      if (rules.pitchingRestInnings && rules.pitchingRestInnings > 0) {
+        const last = lastInningPitchedBefore(playerId, allInnings, inning);
+        if (last != null) {
+          const gap = inning - last - 1; // number of intervening innings not pitched
+          if (gap < rules.pitchingRestInnings) {
+            violations.push({
+              code: "PITCHING_TOO_SOON",
+              severity: "error",
+              message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. cannot pitch again so soon after inning ${last}. Required rest: ${rules.pitchingRestInnings} inning(s).`,
+              playerId,
+              inning,
+              position: slot.position,
+            });
+          }
         }
       }
     }

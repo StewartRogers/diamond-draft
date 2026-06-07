@@ -49,6 +49,8 @@ type PlayerState = {
   positionsPlayed: Set<Position>;
   /** The position assigned in the last inning (for back-to-back detection). */
   lastPosition: Position | null;
+  /** The inning number when the player last pitched (or null). */
+  lastPitchInning: number | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -128,6 +130,7 @@ export function buildAutoLineup(
       consecutiveBench: 0,
       positionsPlayed: new Set(),
       lastPosition: null,
+      lastPitchInning: null,
     });
   }
 
@@ -158,6 +161,7 @@ export function buildAutoLineup(
             ps.consecutiveBench = 0;
           }
           if (isPitchingPos(slot.position)) ps.pitchInnings++;
+          if (isPitchingPos(slot.position)) ps.lastPitchInning = inningNumber;
           ps.positionsPlayed.add(slot.position);
           ps.lastPosition = slot.position;
         }
@@ -219,6 +223,12 @@ export function buildAutoLineup(
         if (rules.enforceNoPitchingAfterCatching) {
           const caughtBefore = [...ps.positionsPlayed].some(isCatchingPos);
           if (caughtBefore) return Infinity;
+        }
+
+        // Hard: enforce pitching rest between appearances
+        if (rules.pitchingRestInnings && ps.lastPitchInning != null) {
+          const gap = inningNumber - ps.lastPitchInning - 1;
+          if (gap < rules.pitchingRestInnings) return Infinity;
         }
       }
 
@@ -330,7 +340,10 @@ export function buildAutoLineup(
           ps.fieldInnings++; // bullpen = active
           ps.consecutiveBench = 0;
         }
-        if (isPitchingPos(slot.position)) ps.pitchInnings++;
+        if (isPitchingPos(slot.position)) {
+          ps.pitchInnings++;
+          ps.lastPitchInning = inningNumber;
+        }
         ps.positionsPlayed.add(slot.position);
         ps.lastPosition = slot.position;
       }
