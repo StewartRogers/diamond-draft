@@ -220,6 +220,109 @@ export function removePlayerOverride(
   return overrides.filter((o) => o.playerId !== playerId);
 }
 
+// ─── Warm-up bullpen ─────────────────────────────────────────────────────────
+
+/**
+ * For every inning N that has a pitcher assigned to the "P" slot, place that
+ * pitcher in "Bullpen - P" for inning N-1 (warm-up). Also try to place the
+ * catcher from inning N into "Bullpen - C" for inning N-1.
+ *
+ * Rules:
+ * - Only fills inning N-1 if it exists (no warm-up for inning 1).
+ * - If the Bullpen-P/C slot in N-1 is already locked to a *different* player,
+ *   it is left alone.
+ * - The pitcher (and catcher) are removed from whichever other non-locked slot
+ *   they occupied in N-1 before being placed in the bullpen.
+ * - Warm-up slots are locked so subsequent auto-fill passes leave them in place.
+ * - If pitcherId is null (pitcher cleared), the matching Bullpen-P in N-1 is
+ *   unlocked and cleared so the slot reverts to open.
+ */
+export function applyWarmupBullpen(innings: InningAssignment[]): InningAssignment[] {
+  let result: InningAssignment[] = innings.map((inn) => ({
+    ...inn,
+    slots: inn.slots.map((s) => ({ ...s })),
+  }));
+
+  // Build a quick lookup: inningNumber → index in result
+  const idxOf = (n: number) => result.findIndex((x) => x.inning === n);
+
+  for (const inn of result) {
+    const pSlot = inn.slots.find((s) => s.position === "P");
+    const pitcherId = pSlot?.playerId ?? null;
+    const warmupNum = inn.inning - 1;
+    if (warmupNum < 1) continue;
+
+    const wi = idxOf(warmupNum);
+    if (wi < 0) continue;
+
+    const bpSlot = result[wi].slots.find((s) => s.position === "Bullpen - P");
+
+    if (pitcherId) {
+      // Don't override a bullpen slot locked to a different player
+      if (bpSlot?.locked && bpSlot.playerId !== pitcherId) continue;
+
+      // Remove pitcher from any other non-locked slot in the warmup inning
+      result[wi] = {
+        ...result[wi],
+        slots: result[wi].slots.map((s) => {
+          if (s.playerId === pitcherId && s.position !== "Bullpen - P" && !s.locked) {
+            return { ...s, playerId: null };
+          }
+          if (s.position === "Bullpen - P") {
+            return { ...s, playerId: pitcherId, locked: true };
+          }
+          return s;
+        }),
+      };
+
+      // Try to place the catcher from inning N into Bullpen-C in N-1
+      const cSlot = inn.slots.find((s) => s.position === "C");
+      const catcherId = cSlot?.playerId ?? null;
+      if (catcherId) {
+        const bcSlot = result[wi].slots.find((s) => s.position === "Bullpen - C");
+        if (!bcSlot?.locked || bcSlot.playerId === catcherId) {
+          const catcherInLocked = result[wi].slots.find(
+            (s) => s.playerId === catcherId && s.locked && s.position !== "Bullpen - C"
+          );
+          if (!catcherInLocked) {
+            result[wi] = {
+              ...result[wi],
+              slots: result[wi].slots.map((s) => {
+                if (s.playerId === catcherId && s.position !== "Bullpen - C" && !s.locked) {
+                  return { ...s, playerId: null };
+                }
+                if (s.position === "Bullpen - C") {
+                  return { ...s, playerId: catcherId, locked: true };
+                }
+                return s;
+              }),
+            };
+          }
+        }
+      }
+    } else {
+      // Pitcher was cleared — release Bullpen-P in N-1 if it was set as warm-up
+      if (bpSlot && bpSlot.locked) {
+        result[wi] = {
+          ...result[wi],
+          slots: result[wi].slots.map((s) =>
+            s.position === "Bullpen - P" ? { ...s, playerId: null, locked: false } : s
+          ),
+        };
+        // Also release Bullpen-C if it was locked as warm-up partner
+        result[wi] = {
+          ...result[wi],
+          slots: result[wi].slots.map((s) =>
+            s.position === "Bullpen - C" && s.locked ? { ...s, playerId: null, locked: false } : s
+          ),
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
 // ─── Roster snapshot helpers ──────────────────────────────────────────────────
 
 /**

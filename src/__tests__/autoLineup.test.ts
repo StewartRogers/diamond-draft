@@ -1,0 +1,373 @@
+/**
+ * Tests for src/lib/autoLineup.ts
+ * Covers: buildAutoLineup — feasibility, pitching limits, pitching rest,
+ *         no-pitching-after-catching, back-to-back bench prevention,
+ *         fair play time, position eligibility, player availability
+ *         (absent, late, earlyLeave), locked slots.
+ */
+import { describe, it, expect, beforeEach } from "vitest";
+import { buildAutoLineup } from "@/lib/autoLineup";
+import { FIELD_POSITIONS } from "@/lib/types";
+import type { InningAssignment, Player, LeagueRules } from "@/lib/types";
+import { createEmptyInning, assignPlayerToSlot, toggleSlotLock } from "@/lib/lineup";
+import { makePlayer, makeRules, resetPlayerSeq, makeRoster, makeInnings, GAME_STUB } from "./helpers";
+
+beforeEach(() => resetPlayerSeq());
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function pitcherCount(innings: InningAssignment[], playerId: string): number {
+  return innings.reduce((sum, inn) => {
+    const slot = inn.slots.find(
+      (s) => s.playerId === playerId && (s.position === "P" || s.position === "Bullpen - P")
+    );
+    return sum + (slot ? 1 : 0);
+  }, 0);
+}
+
+function benchInnings(innings: InningAssignment[], playerId: string): number {
+  return innings.reduce((sum, inn) => {
+    const slot = inn.slots.find((s) => s.playerId === playerId && s.position === "Bench");
+    return sum + (slot ? 1 : 0);
+  }, 0);
+}
+
+function fieldInnings(innings: InningAssignment[], playerId: string): number {
+  return innings.reduce((sum, inn) => {
+    const slot = inn.slots.find(
+      (s) =>
+        s.playerId === playerId &&
+        (FIELD_POSITIONS as readonly string[]).includes(s.position)
+    );
+    return sum + (slot ? 1 : 0);
+  }, 0);
+}
+
+function consecutiveBench(innings: InningAssignment[], playerId: string): number {
+  let max = 0;
+  let current = 0;
+  for (const inn of innings) {
+    const slot = inn.slots.find((s) => s.playerId === playerId);
+    if (!slot || slot.position === "Bench") {
+      current++;
+      max = Math.max(max, current);
+    } else {
+      current = 0;
+    }
+  }
+  return max;
+}
+
+// ─── Basic feasibility ─────────────────────────────────────────────────────
+
+describe("buildAutoLineup — basic feasibility", () => {
+  it("returns feasible=true for a full roster (12 players, 6 innings)", () => {
+    const players = makeRoster(12);
+    const innings = makeInnings(6);
+    const rules = makeRules();
+    const result = buildAutoLineup(players, innings, [], rules, GAME_STUB);
+    expect(result.feasible).toBe(true);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it("assigns every player in every inning (each player gets a slot)", () => {
+    const players = makeRoster(9);
+    const innings = makeInnings(6);
+    const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
+    // Each player should appear in each inning
+    for (const inn of result.innings) {
+      const assignedIds = inn.slots
+        .filter((s) => s.playerId !== null)
+        .map((s) => s.playerId!);
+      for (const p of players) {
+        expect(assignedIds).toContain(p.id);
+      }
+    }
+  });
+
+  it("returns innings with the same count as the input", () => {
+    const players = makeRoster(9);
+    const innings = makeInnings(4);
+    const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
+    expect(result.innings).toHaveLength(4);
+  });
+
+  it("logs one entry per inning", () => {
+    const players = makeRoster(9);
+    const innings = makeInnings(3);
+    const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
+    expect(result.log).toHaveLength(3);
+  });
+});
+
+// ─── Pitching limits ──────────────────────────────────────────────────────
+
+describe("buildAutoLineup — pitching limits", () => {
+  it("respects per-player game pitching limit", () => {
+    // Only one pitcher-eligible player; limit = 2; 6 innings
+    const pitcher = makePlayer({ id: "ace", pitchingLimitGame: 2, eligiblePositions: ["P", "LF"] });
+    const others = makeRoster(8);
+    const rules = makeRules({ globalPitchingLimitGame: 0 }); // no global limit
+    const result = buildAutoLineup([pitcher, ...others], makeInnings(6), [], rules, GAME_STUB);
+    const pitchCount = pitcherCount(result.innings, "ace");
+    expect(pitchCount).toBeLessThanOrEqual(2);
+  });
+
+  it("respects global game pitching limit", () => {
+    const pitcher = makePlayer({ id: "ace", pitchingLimitGame: 0 });
+    const others = makeRoster(8);
+    const rules = makeRules({ globalPitchingLimitGame: 2 });
+    const result = buildAutoLineup([pitcher, ...others], makeInnings(6), [], rules, GAME_STUB);
+    const pitchCount = pitcherCount(result.innings, "ace");
+    expect(pitchCount).toBeLessThanOrEqual(2);
+  });
+
+  it("respects season pitching limit", () => {
+    const pitcher = makePlayer({
+      id: "ace",
+      pitchingLimitSeason: 4,
+      pitchingLog: [{ gameId: "prev", date: "2026-01-01", innings: 3 }], // 3 used, 1 remaining
+    });
+    const others = makeRoster(8);
+    const rules = makeRules({ globalPitchingLimitGame: 0 });
+    const result = buildAutoLineup([pitcher, ...others], makeInnings(6), [], rules, GAME_STUB);
+    const pitchCount = pitcherCount(result.innings, "ace");
+    expect(pitchCount).toBeLessThanOrEqual(1);
+  });
+});
+
+// ─── Pitching rest ────────────────────────────────────────────────────────
+
+describe("buildAutoLineup — pitching rest", () => {
+  it("does not assign back-to-back pitching when pitchingRestInnings=1", () => {
+    // 10 players so there's scheduling flexibility
+    const players = makeRoster(10);
+    const rules = makeRules({ pitchingRestInnings: 1, globalPitchingLimitGame: 0 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    for (const p of players) {
+      const pitchingInnings: number[] = [];
+      result.innings.forEach((inn) => {
+        if (
+          inn.slots.some(
+            (s) => s.playerId === p.id && (s.position === "P" || s.position === "Bullpen - P")
+          )
+        ) {
+          pitchingInnings.push(inn.inning);
+        }
+      });
+      for (let i = 1; i < pitchingInnings.length; i++) {
+        const gap = pitchingInnings[i] - pitchingInnings[i - 1] - 1;
+        expect(gap).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+});
+
+// ─── No pitching after catching ───────────────────────────────────────────
+
+describe("buildAutoLineup — no pitching after catching", () => {
+  it("does not assign pitching to a player who already caught (rule enabled)", () => {
+    const players = makeRoster(10);
+    const rules = makeRules({ enforceNoPitchingAfterCatching: true });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    for (const p of players) {
+      let caughtInInning: number | null = null;
+      for (const inn of result.innings) {
+        const slot = inn.slots.find((s) => s.playerId === p.id);
+        if (!slot) continue;
+        if (slot.position === "C" || slot.position === "Bullpen - C") {
+          caughtInInning = inn.inning;
+        } else if (
+          (slot.position === "P" || slot.position === "Bullpen - P") &&
+          caughtInInning !== null
+        ) {
+          // This should never happen
+          expect(true).toBe(false); // fail explicitly
+        }
+      }
+    }
+  });
+});
+
+// ─── Back-to-back bench prevention ───────────────────────────────────────
+
+describe("buildAutoLineup — back-to-back bench prevention", () => {
+  it("no player exceeds maxConsecutiveBench=1", () => {
+    const players = makeRoster(12); // extra players makes scheduling flexible
+    const rules = makeRules({ maxConsecutiveBench: 1 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    for (const p of players) {
+      const maxConsec = consecutiveBench(result.innings, p.id);
+      expect(maxConsec).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+// ─── Fair play time ───────────────────────────────────────────────────────
+
+describe("buildAutoLineup — fair play time", () => {
+  it("gives every active player at least minFieldInningsPerPlayer field innings", () => {
+    const players = makeRoster(9);
+    const rules = makeRules({ minFieldInningsPerPlayer: 2, enforceFairPlayTime: true });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    for (const p of players) {
+      expect(fieldInnings(result.innings, p.id)).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("does not count field innings for absent players toward violations", () => {
+    const players = makeRoster(9);
+    const overrides = [{ playerId: players[0].id, status: "absent" as const }];
+    const rules = makeRules({ minFieldInningsPerPlayer: 2 });
+    const result = buildAutoLineup(players, makeInnings(6), overrides, rules, GAME_STUB);
+
+    // Absent player should have 0 field innings (they were excluded)
+    expect(fieldInnings(result.innings, players[0].id)).toBe(0);
+  });
+});
+
+// ─── Player availability overrides ───────────────────────────────────────
+
+describe("buildAutoLineup — player availability", () => {
+  it("does not assign an absent player any slot", () => {
+    const players = makeRoster(10);
+    const absentId = players[0].id;
+    const overrides = [{ playerId: absentId, status: "absent" as const }];
+    const result = buildAutoLineup(players, makeInnings(6), overrides, makeRules(), GAME_STUB);
+
+    const absentSlots = result.innings.flatMap((inn) =>
+      inn.slots.filter((s) => s.playerId === absentId)
+    );
+    expect(absentSlots).toHaveLength(0);
+  });
+
+  it("does not assign a late player before their arrival inning", () => {
+    const players = makeRoster(10);
+    const lateId = players[0].id;
+    const overrides = [{ playerId: lateId, status: "late" as const, inning: 4 }];
+    const result = buildAutoLineup(players, makeInnings(6), overrides, makeRules(), GAME_STUB);
+
+    // Innings 1-3 should have no slot for lateId
+    const earlySlots = result.innings
+      .filter((inn) => inn.inning < 4)
+      .flatMap((inn) => inn.slots.filter((s) => s.playerId === lateId));
+    expect(earlySlots).toHaveLength(0);
+  });
+
+  it("assigns a late player starting from their arrival inning", () => {
+    const players = makeRoster(10);
+    const lateId = players[0].id;
+    const overrides = [{ playerId: lateId, status: "late" as const, inning: 3 }];
+    const result = buildAutoLineup(players, makeInnings(6), overrides, makeRules(), GAME_STUB);
+
+    const afterArrivalInnings = result.innings.filter((inn) => inn.inning >= 3);
+    const hasSlot = afterArrivalInnings.some((inn) =>
+      inn.slots.some((s) => s.playerId === lateId)
+    );
+    expect(hasSlot).toBe(true);
+  });
+
+  it("does not assign an earlyLeave player after their departure inning", () => {
+    const players = makeRoster(10);
+    const earlyId = players[0].id;
+    const overrides = [{ playerId: earlyId, status: "earlyLeave" as const, inning: 3 }];
+    const result = buildAutoLineup(players, makeInnings(6), overrides, makeRules(), GAME_STUB);
+
+    const afterDeparture = result.innings
+      .filter((inn) => inn.inning > 3)
+      .flatMap((inn) => inn.slots.filter((s) => s.playerId === earlyId));
+    expect(afterDeparture).toHaveLength(0);
+  });
+});
+
+// ─── Position eligibility ─────────────────────────────────────────────────
+
+describe("buildAutoLineup — position eligibility", () => {
+  it("only assigns players to positions they are eligible for (enforcePositionEligibility=true)", () => {
+    const players = [
+      makePlayer({ id: "p1", eligiblePositions: ["P", "1B"] }),
+      makePlayer({ id: "p2", eligiblePositions: ["C", "2B"] }),
+      makePlayer({ id: "p3", eligiblePositions: ["3B", "SS"] }),
+      makePlayer({ id: "p4", eligiblePositions: ["LF", "CF"] }),
+      makePlayer({ id: "p5", eligiblePositions: ["RF", "P"] }),
+      makePlayer({ id: "p6", eligiblePositions: ["1B", "2B", "3B"] }),
+      makePlayer({ id: "p7", eligiblePositions: ["SS", "LF", "CF"] }),
+      makePlayer({ id: "p8", eligiblePositions: ["RF", "C"] }),
+      makePlayer({ id: "p9", eligiblePositions: ["P", "SS", "LF"] }),
+    ];
+    const rules = makeRules({ enforcePositionEligibility: true });
+    const result = buildAutoLineup(players, makeInnings(3), [], rules, GAME_STUB);
+
+    for (const inn of result.innings) {
+      for (const slot of inn.slots) {
+        if (!slot.playerId) continue;
+        if (!(FIELD_POSITIONS as readonly string[]).includes(slot.position)) continue;
+        const player = players.find((p) => p.id === slot.playerId)!;
+        expect(player.eligiblePositions).toContain(slot.position);
+      }
+    }
+  });
+});
+
+// ─── Locked slots ────────────────────────────────────────────────────────
+
+describe("buildAutoLineup — locked slots", () => {
+  it("preserves locked player assignments", () => {
+    const players = makeRoster(9);
+    let innings = makeInnings(3);
+    // Lock player[0] into P for inning 1
+    innings = assignPlayerToSlot(innings, 1, "P", players[0].id);
+    innings = toggleSlotLock(innings, 1, "P");
+
+    const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
+    const pSlot = result.innings[0].slots.find((s) => s.position === "P");
+    expect(pSlot?.playerId).toBe(players[0].id);
+    expect(pSlot?.locked).toBe(true);
+  });
+
+  it("does not double-assign a locked player to another slot in same inning", () => {
+    const players = makeRoster(9);
+    let innings = makeInnings(3);
+    innings = assignPlayerToSlot(innings, 1, "P", players[0].id);
+    innings = toggleSlotLock(innings, 1, "P");
+
+    const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
+    const slotsForP0 = result.innings[0].slots.filter((s) => s.playerId === players[0].id);
+    expect(slotsForP0).toHaveLength(1);
+  });
+});
+
+// ─── Edge cases ────────────────────────────────────────────────────────────
+
+describe("buildAutoLineup — edge cases", () => {
+  it("handles empty player list gracefully", () => {
+    const innings = makeInnings(3);
+    const result = buildAutoLineup([], innings, [], makeRules(), GAME_STUB);
+    expect(result.feasible).toBe(false);
+    expect(result.warnings.length).toBeGreaterThan(0);
+  });
+
+  it("handles single inning", () => {
+    const players = makeRoster(9);
+    const result = buildAutoLineup(players, makeInnings(1), [], makeRules(), GAME_STUB);
+    expect(result.innings).toHaveLength(1);
+  });
+
+  it("handles more players than field spots (extra go to bench)", () => {
+    const players = makeRoster(15);
+    const result = buildAutoLineup(players, makeInnings(6), [], makeRules(), GAME_STUB);
+    // Each player should appear in at least one inning across the whole game
+    const allAssigned = new Set(
+      result.innings.flatMap((inn) =>
+        inn.slots.filter((s) => s.playerId !== null).map((s) => s.playerId!)
+      )
+    );
+    for (const p of players) {
+      expect(allAssigned.has(p.id)).toBe(true);
+    }
+  });
+});

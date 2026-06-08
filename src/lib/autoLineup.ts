@@ -232,8 +232,8 @@ export function buildAutoLineup(
         }
       }
 
-      // Hard: back-to-back bench beyond limit
-      if (isBenchPos(pos) && ps.consecutiveBench + 1 > rules.maxConsecutiveBench) {
+      // Hard: back-to-back bench beyond limit (0 = rule disabled / no limit)
+      if (isBenchPos(pos) && rules.maxConsecutiveBench > 0 && ps.consecutiveBench + 1 > rules.maxConsecutiveBench) {
         return Infinity;
       }
 
@@ -365,6 +365,25 @@ export function buildAutoLineup(
     }
 
     tryAssign(benchSlots.slice(0, unassignedPlayers.length), unassignedPlayers);
+
+    // Force-bench anyone still without a slot (back-to-back constraint couldn't be
+    // satisfied). Better to have a complete lineup with a logged warning than a
+    // silent gap that renders as an implicit BENCH and triggers false violations.
+    const stillUnassigned = available.filter((p) => !assignedThisInning.has(p.id));
+    for (const player of stillUnassigned) {
+      const slot: InningSlot = { position: "Bench", playerId: player.id };
+      inning.slots.push(slot);
+      assignedThisInning.add(player.id);
+      const ps = state.get(player.id)!;
+      ps.benchInnings++;
+      ps.consecutiveBench++;
+      ps.positionsPlayed.add("Bench");
+      ps.lastPosition = "Bench";
+      warnings.push(
+        `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
+        `force-benched — not enough field spots to avoid back-to-back bench.`
+      );
+    }
 
     log.push(
       `Inning ${inningNumber}: assigned ${assignedThisInning.size - lockedPlayerIds.size} player(s).`
