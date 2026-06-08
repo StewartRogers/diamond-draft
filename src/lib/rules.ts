@@ -334,7 +334,7 @@ export function validateInning(
     // ── Back-to-back bench ────────────────────────────────────────────────────
     if (slot.position === "Bench" && !isBullpen(slot.position)) {
       const consecutive = consecutiveBenchInnings(playerId, allInnings, inning);
-      if (consecutive > rules.maxConsecutiveBench) {
+      if (rules.maxConsecutiveBench > 0 && consecutive > rules.maxConsecutiveBench) {
         violations.push({
           code: "BACK_TO_BACK_BENCH",
           severity: "error",

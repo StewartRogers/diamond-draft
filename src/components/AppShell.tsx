@@ -117,70 +117,147 @@ function parseDate(dateStr: string) {
   return { day, mon };
 }
 
+export function DeleteGameModal({ game, onClose }: { game: Game; onClose: () => void }) {
+  const deleteGame = useDiamondDraftStore((s) => s.deleteGame);
+  const router = useRouter();
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const label = game.opponent ? `vs ${game.opponent}` : game.date;
+  const confirm = "DELETE";
+
+  async function handleDelete() {
+    if (code !== confirm) return;
+    setLoading(true);
+    try {
+      await deleteGame(game.id);
+      onClose();
+      router.push("/games");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="dd-scrim" onClick={onClose}>
+      <div className="dd-modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ padding: "22px 26px", borderBottom: `1px solid ${C.line}`, display: "flex", alignItems: "center" }}>
+          <div>
+            <div className="dd-eyebrow" style={{ color: C.red }}>Delete game</div>
+            <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{label}</div>
+          </div>
+          <button className="dd-btn ghost sm" style={{ marginLeft: "auto", padding: "0 8px" }} onClick={onClose}>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={C.muted} strokeWidth="1.7" strokeLinecap="round">
+              <path d="M4 4l10 10M14 4L4 14"/>
+            </svg>
+          </button>
+        </div>
+        <div style={{ padding: "24px 26px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ background: C.redBg, border: `1px solid ${C.redBd}`, borderRadius: 10, padding: "12px 14px", fontSize: 13.5, color: C.red }}>
+            This will permanently delete the lineup and all assignments. This cannot be undone.
+          </div>
+          <div className="dd-field">
+            <label>Type <strong>DELETE</strong> to confirm</label>
+            <input
+              className="dd-input"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="DELETE"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter" && code === confirm) handleDelete(); }}
+            />
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "18px 26px", borderTop: `1px solid ${C.line}`, background: C.sub }}>
+          <button className="dd-btn sec" onClick={onClose}>Cancel</button>
+          <button
+            className="dd-btn pri"
+            style={code === confirm ? { background: C.red, borderColor: C.red } : {}}
+            onClick={handleDelete}
+            disabled={code !== confirm || loading}
+          >
+            {loading ? "Deleting…" : "Delete game"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function GameRow({ game }: { game: Game }) {
   const { day, mon } = parseDate(game.date);
+  const [showDelete, setShowDelete] = useState(false);
   const statusPill =
     game.status === "finalized"
       ? { t: "Finalized", fg: C.green, bg: C.greenBg, bd: C.greenBd }
       : { t: "Draft", fg: C.amber, bg: C.amberBg, bd: C.amberBd };
 
   return (
-    <Link href={`/games/${game.id}`} className="dd-listrow">
-      {/* Date chip */}
-      <div
-        style={{
-          width: 52, height: 52, borderRadius: 12,
-          background: C.greenBg, border: `1px solid ${C.greenBd}`,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <span
-          style={{
-            fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700,
-            color: C.green, lineHeight: 1,
-          }}
-        >
-          {day}
-        </span>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600,
-            color: C.faint, letterSpacing: ".05em", marginTop: 1,
-          }}
-        >
-          {mon}
-        </span>
-      </div>
-
-      {/* Info */}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <span
+    <>
+      <div style={{ position: "relative" }}>
+        <Link href={`/games/${game.id}`} className="dd-listrow" style={{ paddingRight: 52 }}>
+          {/* Date chip */}
+          <div
             style={{
-              fontSize: 16, fontWeight: 700,
-              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              width: 52, height: 52, borderRadius: 12,
+              background: C.greenBg, border: `1px solid ${C.greenBd}`,
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
             }}
           >
-            {game.opponent ? `vs ${game.opponent}` : game.date}
-          </span>
-        </div>
-        <div style={{ fontSize: 13, color: C.faint, marginTop: 3, whiteSpace: "nowrap" }}>
-          {game.innings.length} innings · {game.rosterSnapshot.length} players
-        </div>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: C.green, lineHeight: 1 }}>
+              {day}
+            </span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, color: C.faint, letterSpacing: ".05em", marginTop: 1 }}>
+              {mon}
+            </span>
+          </div>
+
+          {/* Info */}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {game.opponent ? `vs ${game.opponent}` : game.date}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, color: C.faint, marginTop: 3, whiteSpace: "nowrap" }}>
+              {game.innings.length} innings · {game.rosterSnapshot.length} players
+            </div>
+          </div>
+
+          {/* Status + chevron */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <Pill fg={statusPill.fg} bg={statusPill.bg} bd={statusPill.bd}>
+              {statusPill.t}
+            </Pill>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={C.faint2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6.5 4l5 5-5 5"/>
+            </svg>
+          </div>
+        </Link>
+
+        {/* Delete button — overlaid so it doesn't inherit the link */}
+        <button
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDelete(true); }}
+          title="Delete game"
+          style={{
+            position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+            width: 32, height: 32, borderRadius: 8,
+            background: "transparent", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: C.faint,
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = C.redBg)}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+          <svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 5h12M8 5V3h2v2M6 5l.5 10h5L12 5"/>
+          </svg>
+        </button>
       </div>
 
-      {/* Status + chevron */}
-      <div style={{ display: "flex", alignItems: "center", marginLeft: "auto", gap: 16 }}>
-        <Pill fg={statusPill.fg} bg={statusPill.bg} bd={statusPill.bd}>
-          {statusPill.t}
-        </Pill>
-        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={C.faint2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6.5 4l5 5-5 5"/>
-        </svg>
-      </div>
-    </Link>
+      {showDelete && <DeleteGameModal game={game} onClose={() => setShowDelete(false)} />}
+    </>
   );
 }
 
@@ -230,6 +307,7 @@ export function FitCard({ width = 1320, children }: { width?: number; children: 
 
 export function NewGameModal({ onClose }: { onClose: () => void }) {
   const createGame = useDiamondDraftStore((s) => s.createGame);
+  const setPlayerOverride = useDiamondDraftStore((s) => s.setPlayerOverride);
   const defaultTeamName = useDiamondDraftStore((s) => s.settings.teamName);
   const defaultInnings = useDiamondDraftStore((s) => s.settings.leagueRules.defaultInnings);
   const players = useDiamondDraftStore((s) => s.players);
@@ -238,10 +316,18 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState("10:00 AM");
   const [innings, setInnings] = useState(defaultInnings ?? 7);
+  const [absentIds, setAbsentIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const activeCount = players.length; // all players are eligible unless overridden per game
+  function toggleAbsent(id: string) {
+    setAbsentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function handleCreate() {
     setLoading(true);
@@ -250,6 +336,9 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
         { date, opponent, teamName: defaultTeamName, notes: time },
         innings
       );
+      for (const playerId of absentIds) {
+        await setPlayerOverride(game.id, { playerId, status: "absent" });
+      }
       onClose();
       router.push(`/games/${game.id}`);
     } finally {
@@ -328,16 +417,43 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </div>
-          <div
-            style={{
-              background: C.sub2, border: `1px solid ${C.line}`,
-              borderRadius: 12, padding: "13px 15px",
-              fontSize: 13, color: C.muted,
-            }}
-          >
-            The full active roster (
-            <strong style={{ color: C.ink }}>{activeCount} players</strong>
-            ) will be carried in. You'll set the batting order and positions on the next screen.
+          {/* Absent players */}
+          <div className="dd-field">
+            <label>Who&rsquo;s absent today? <span style={{ fontWeight: 400, color: C.faint }}>(optional)</span></label>
+            <div
+              style={{
+                border: `1px solid ${C.line}`, borderRadius: 10,
+                maxHeight: 180, overflowY: "auto",
+              }}
+            >
+              {players.map((p, i) => (
+                <label
+                  key={p.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "9px 13px",
+                    borderTop: i > 0 ? `1px solid ${C.line2}` : undefined,
+                    cursor: "pointer",
+                    background: absentIds.has(p.id) ? C.amberBg : undefined,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={absentIds.has(p.id)}
+                    onChange={() => toggleAbsent(p.id)}
+                    style={{ accentColor: C.amber, width: 15, height: 15, flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: 13.5, color: absentIds.has(p.id) ? C.amber : C.ink }}>
+                    #{p.jerseyNumber} {p.firstName} {p.lastInitial}.
+                  </span>
+                </label>
+              ))}
+            </div>
+            {absentIds.size > 0 && (
+              <div style={{ fontSize: 12.5, color: C.amber, marginTop: 5 }}>
+                {absentIds.size} player{absentIds.size !== 1 ? "s" : ""} marked absent
+              </div>
+            )}
           </div>
         </div>
 

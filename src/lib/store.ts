@@ -518,7 +518,7 @@ export const useDiamondDraftStore = create<
         position,
         playerId
       );
-      const updatedInnings = lineupLib.assignPlayerToSlot(
+      const assignedInnings = lineupLib.assignPlayerToSlot(
         game.innings,
         inning,
         position,
@@ -535,6 +535,10 @@ export const useDiamondDraftStore = create<
             }
           : inn
       );
+      // After assigning pitcher, apply warm-up bullpen for the preceding inning
+      const updatedInnings = position === "P"
+        ? lineupLib.applyWarmupBullpen(assignedInnings)
+        : assignedInnings;
       const updated: Game = {
         ...game,
         pitchCatchAssignments: updatedAssignments,
@@ -563,9 +567,10 @@ export const useDiamondDraftStore = create<
         game
       );
 
+      const warmupInnings = lineupLib.applyWarmupBullpen(result.innings);
       const updated: Game = {
         ...game,
-        innings: result.innings,
+        innings: warmupInnings,
         updatedAt: new Date().toISOString(),
       };
       set((s) => {
@@ -574,7 +579,7 @@ export const useDiamondDraftStore = create<
       });
       await api.saveGame(updated);
       get().revalidate(gameId);
-      return result;
+      return { ...result, innings: warmupInnings };
     },
 
     autoFillInning: async (gameId, inning) => {
