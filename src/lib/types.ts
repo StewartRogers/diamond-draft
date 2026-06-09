@@ -36,6 +36,16 @@ export type PitchingLogEntry = {
  */
 export type PositionRating = 1 | 2 | 3;
 
+/**
+ * Overall defensive ability on a 1–4 scale (4 = strongest defender).
+ *   1 = Developing  — learning the game
+ *   2 = Average     — holds their own
+ *   3 = Strong      — above average, reliable
+ *   4 = Elite       — best defensive player
+ * Used to balance defensive strength across the lineup in auto-fill.
+ */
+export type DefenseRating = 1 | 2 | 3 | 4;
+
 export type Player = {
   id: string;
   firstName: string;
@@ -47,6 +57,11 @@ export type Player = {
    * A position can be eligible without a rating (unrated = no preference set).
    */
   positionRatings?: Partial<Record<FieldPosition, PositionRating>>;
+  /**
+   * Overall defensive ability rating (1 = developing, 5 = elite).
+   * Used to break ties when auto-fill assigns field positions.
+   */
+  defenseRating?: DefenseRating;
   isGuest: boolean;
   /** Season-level pitching limit (innings). 0 = no limit. */
   pitchingLimitSeason: number;

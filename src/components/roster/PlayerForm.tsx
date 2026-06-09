@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Player, Position, FieldPosition, PositionRating } from "@/lib/types";
+import type { Player, Position, FieldPosition, PositionRating, DefenseRating } from "@/lib/types";
 import { FIELD_POSITIONS, ALL_POSITIONS } from "@/lib/types";
 
 // Tier display config — used in both the cycling buttons and the legend
@@ -21,6 +21,7 @@ type Props = {
     jerseyNumber: string;
     eligiblePositions: Position[];
     positionRatings: Partial<Record<FieldPosition, PositionRating>>;
+    defenseRating?: DefenseRating;
     isGuest: boolean;
     pitchingLimitGame: number;
     pitchingLimitSeason: number;
@@ -37,6 +38,9 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
   );
   const [positionRatings, setPositionRatings] = useState<Partial<Record<FieldPosition, PositionRating>>>(
     initial?.positionRatings ?? {}
+  );
+  const [defenseRating, setDefenseRating] = useState<DefenseRating | undefined>(
+    initial?.defenseRating
   );
   const [isGuest, setIsGuest] = useState(initial?.isGuest ?? false);
   const [pitchingLimitGame, setPitchingLimitGame] = useState(
@@ -88,6 +92,7 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
       jerseyNumber: jerseyNumber.trim(),
       eligiblePositions,
       positionRatings,
+      defenseRating,
       isGuest,
       pitchingLimitGame,
       pitchingLimitSeason,
@@ -150,6 +155,43 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
           <label htmlFor="isGuest" className="text-sm text-slate-300">
             Guest player
           </label>
+        </div>
+      </div>
+
+      {/* Overall defense rating */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-xs font-medium text-slate-400">
+            Overall Defense Rating
+          </label>
+          <span className="text-xs text-slate-500">click to set · click again to clear</span>
+        </div>
+        <div className="flex gap-2">
+          {(
+            [
+              { tier: 1 as DefenseRating, label: "Developing",  bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
+              { tier: 2 as DefenseRating, label: "Average",     bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+              { tier: 3 as DefenseRating, label: "Strong",      bg: "#dcfce7", border: "#22c55e", text: "#166534" },
+              { tier: 4 as DefenseRating, label: "Elite",       bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+            ] as const
+          ).map(({ tier, label, bg, border, text }) => {
+            const active = defenseRating === tier;
+            return (
+              <button
+                key={tier}
+                type="button"
+                onClick={() => setDefenseRating(active ? undefined : tier)}
+                className="flex-1 py-2 rounded-md text-xs font-semibold border transition-colors"
+                style={
+                  active
+                    ? { background: bg, borderColor: border, color: text }
+                    : { background: "#1e293b", borderColor: "#334155", color: "#64748b" }
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
