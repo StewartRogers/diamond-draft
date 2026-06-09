@@ -110,7 +110,7 @@ export default function RosterPage() {
                     <tr style={{ cursor: "pointer" }}>
                       <td><Jersey num={player.jerseyNumber} /></td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 15, fontWeight: 700 }}>
                             {player.firstName} {player.lastInitial}.
                           </span>
@@ -119,6 +119,23 @@ export default function RosterPage() {
                               GUEST
                             </span>
                           )}
+                          {player.defenseRating !== undefined && (() => {
+                            const cfg = {
+                              1: { label: "Developing", bg: "#f1f5f9", color: "#475569" },
+                              2: { label: "Average",    bg: "#dbeafe", color: "#1e40af" },
+                              3: { label: "Strong",     bg: "#dcfce7", color: "#166534" },
+                              4: { label: "Elite",      bg: "#fef3c7", color: "#92400e" },
+                            }[player.defenseRating];
+                            return (
+                              <span
+                                className="dd-zchip"
+                                title={`Overall defense: ${cfg.label}`}
+                                style={{ background: cfg.bg, color: cfg.color, fontSize: 11 }}
+                              >
+                                {cfg.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
                       <td><ZChips positions={player.eligiblePositions} ratings={player.positionRatings} /></td>
