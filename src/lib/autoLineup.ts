@@ -23,7 +23,14 @@ import type {
   GameStatus,
 } from "./types";
 import { FIELD_POSITIONS } from "./types";
-import { validateGame } from "./rules";
+import {
+  validateGame,
+  consecutiveBenchInnings,
+  lastActualPitchingInningBefore,
+  lastInningPitchedBefore,
+  totalFieldInnings,
+  totalInningsPitchedInGame,
+} from "./rules";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,8 +48,6 @@ type PlayerState = {
   id: string;
   /** Field innings assigned so far in this game. */
   fieldInnings: number;
-  /** Bench innings assigned so far in this game. */
-  benchInnings: number;
   /** Pitching innings assigned so far in this game. */
   pitchInnings: number;
   /** How many consecutive bench innings ending at the last assigned inning. */
@@ -73,30 +78,6 @@ function isCatchingPos(pos: Position): boolean {
 
 function isBenchPos(pos: Position): boolean {
   return pos === "Bench";
-}
-
-/**
- * Count consecutive bench innings for a player ending at (and including)
- * upToInning, stopping when an inning where the player is unavailable is found.
- * Reads directly from innings data — used by the post-solve repair pass.
- */
-function benchConsecutiveCount(
-  playerId: string,
-  innings: InningAssignment[],
-  upToInning: number,
-  overrides: PlayerGameOverride[]
-): number {
-  const sorted = innings
-    .filter((i) => i.inning <= upToInning)
-    .sort((a, b) => b.inning - a.inning);
-  let count = 0;
-  for (const inn of sorted) {
-    if (!playerAvailableInInning(playerId, inn.inning, overrides)) break;
-    const slot = inn.slots.find((s) => s.playerId === playerId);
-    if (!slot || slot.position === "Bench") count++;
-    else break;
-  }
-  return count;
 }
 
 function playerAvailableInInning(
@@ -132,6 +113,104 @@ function remainingInnings(
   return count;
 }
 
+/** All positions a player has occupied across the given innings. */
+function positionsPlayedSet(
+  playerId: string,
+  innings: InningAssignment[]
+): Set<Position> {
+  const result = new Set<Position>();
+  for (const inn of innings) {
+    const slot = inn.slots.find((s) => s.playerId === playerId);
+    if (slot) result.add(slot.position);
+  }
+  return result;
+}
+
+/** The position the player held in the most recent inning before beforeInning, or null. */
+function lastPositionBefore(
+  playerId: string,
+  innings: InningAssignment[],
+  beforeInning: number
+): Position | null {
+  const prior = innings
+    .filter((i) => i.inning < beforeInning)
+    .sort((a, b) => b.inning - a.inning);
+  for (const inn of prior) {
+    const slot = inn.slots.find((s) => s.playerId === playerId);
+    if (slot) return slot.position;
+  }
+  return null;
+}
+
+/**
+ * Derive the complete PlayerState for every player from committed innings data.
+ *
+ * This is the single function that produces PlayerState. It uses the same
+ * helper functions that validateGame() uses, so score() and validateGame()
+ * are guaranteed to read from an identical logical model.
+ *
+ * @param priorInnings   All fully-committed innings before the current one.
+ * @param lockedCurrentSlots  Locked slots in the inning being solved. These
+ *   are included because they are already committed — they affect consecutive-
+ *   bench streaks, pitch counts, etc. for decisions in the same inning.
+ * @param currentInningNumber  1-based inning number being solved.
+ */
+export function buildStateFromInnings(
+  players: Player[],
+  priorInnings: InningAssignment[],
+  lockedCurrentSlots: InningSlot[],
+  currentInningNumber: number,
+  overrides: PlayerGameOverride[],
+  game: Pick<Game, "id">
+): Map<string, PlayerState> {
+  // Treat locked current slots as a synthetic committed inning so that state
+  // reflects them when scoring open slots in the same inning.
+  const allForState: InningAssignment[] = [
+    ...priorInnings,
+    { inning: currentInningNumber, slots: lockedCurrentSlots },
+  ];
+
+  return new Map(
+    players.map((p) => [
+      p.id,
+      {
+        id: p.id,
+        fieldInnings: totalFieldInnings(p.id, allForState),
+        pitchInnings: totalInningsPitchedInGame(p.id, allForState),
+        // consecutiveBench must use only prior innings so that unassigned slots
+        // in the current inning are not mistakenly treated as bench innings
+        // (consecutiveBenchInnings counts "no slot found" as bench).
+        // We then manually extend or reset the streak based on any locked slot
+        // the player already has in the current inning.
+        consecutiveBench: (() => {
+          const priorStreak = consecutiveBenchInnings(
+            p.id,
+            priorInnings,
+            currentInningNumber - 1,
+            overrides
+          );
+          const lockedSlot = lockedCurrentSlots.find((s) => s.playerId === p.id);
+          if (!lockedSlot) return priorStreak;
+          if (lockedSlot.position === "Bench") return priorStreak + 1;
+          return 0; // locked to a field position — streak breaks
+        })(),
+        positionsPlayed: positionsPlayedSet(p.id, allForState),
+        lastPosition: lastPositionBefore(p.id, allForState, currentInningNumber + 1),
+        lastPitchInning: lastInningPitchedBefore(
+          p.id,
+          allForState,
+          currentInningNumber + 1
+        ),
+        lastActualPitchInning: lastActualPitchingInningBefore(
+          p.id,
+          allForState,
+          currentInningNumber + 1
+        ),
+      },
+    ])
+  );
+}
+
 // ─── Solver ───────────────────────────────────────────────────────────────────
 
 /**
@@ -150,22 +229,6 @@ function _solveOnce(
   let feasible = true;
 
   const totalInnings = existingInnings.length;
-
-  // Initialise per-player mutable state
-  const state = new Map<string, PlayerState>();
-  for (const p of players) {
-    state.set(p.id, {
-      id: p.id,
-      fieldInnings: 0,
-      benchInnings: 0,
-      pitchInnings: 0,
-      consecutiveBench: 0,
-      positionsPlayed: new Set(),
-      lastPosition: null,
-      lastPitchInning: null,
-      lastActualPitchInning: null,
-    });
-  }
 
   // Build result innings, respecting locked slots
   const resultInnings: InningAssignment[] = existingInnings.map((inn) => ({
@@ -188,30 +251,27 @@ function _solveOnce(
       if (!slot.locked) slot.playerId = null;
     }
 
-    // ── Collect locked assignments first ──────────────────────────────────
-    const lockedPlayerIds = new Set<string>();
-    for (const slot of inning.slots) {
-      if (slot.locked && slot.playerId) {
-        lockedPlayerIds.add(slot.playerId);
-        const ps = state.get(slot.playerId);
-        if (ps) {
-          if (isFieldPos(slot.position)) ps.fieldInnings++;
-          else if (isBenchPos(slot.position)) {
-            ps.benchInnings++;
-            ps.consecutiveBench++;
-          } else {
-            // bullpen counts as field for fair-play purposes
-            ps.fieldInnings++;
-            ps.consecutiveBench = 0;
-          }
-          if (isPitchingPos(slot.position)) ps.pitchInnings++;
-          if (isPitchingPos(slot.position)) ps.lastPitchInning = inningNumber;
-          if (slot.position === "P") ps.lastActualPitchInning = inningNumber;
-          ps.positionsPlayed.add(slot.position);
-          ps.lastPosition = slot.position;
-        }
-      }
-    }
+    // ── Rebuild per-player state from committed innings ───────────────────
+    // Use only innings that are fully committed (resultInnings before this one),
+    // plus any locked slots already in this inning. This is the single
+    // authoritative state derivation — same helpers as validateGame() — so
+    // score() and validateGame() are guaranteed to read an identical model.
+    const lockedCurrentSlots = inning.slots.filter(
+      (s) => s.locked && s.playerId != null
+    );
+    const state = buildStateFromInnings(
+      players,
+      resultInnings.slice(0, inningIdx),
+      lockedCurrentSlots,
+      inningNumber,
+      overrides,
+      game
+    );
+
+    // ── Collect locked player IDs (for availability filtering below) ──────
+    const lockedPlayerIds = new Set<string>(
+      lockedCurrentSlots.map((s) => s.playerId!)
+    );
 
     // ── Available players for this inning (not absent, not locked) ─────────
     const available = players.filter(
@@ -402,25 +462,6 @@ function _solveOnce(
         const best = scored[0].player;
         slot.playerId = best.id;
         assignedThisInning.add(best.id);
-
-        const ps = state.get(best.id)!;
-        if (isFieldPos(slot.position)) {
-          ps.fieldInnings++;
-          ps.consecutiveBench = 0;
-        } else if (isBenchPos(slot.position)) {
-          ps.benchInnings++;
-          ps.consecutiveBench++;
-        } else {
-          ps.fieldInnings++; // bullpen = active
-          ps.consecutiveBench = 0;
-        }
-        if (isPitchingPos(slot.position)) {
-          ps.pitchInnings++;
-          ps.lastPitchInning = inningNumber;
-        }
-        if (slot.position === "P") ps.lastActualPitchInning = inningNumber;
-        ps.positionsPlayed.add(slot.position);
-        ps.lastPosition = slot.position;
       }
     };
 
@@ -441,170 +482,26 @@ function _solveOnce(
 
     tryAssign(benchSlots.slice(0, unassignedPlayers.length), unassignedPlayers);
 
-    // Force-bench anyone still without a slot. If benching a player would
-    // violate back-to-back bench, first try swapping them into a field slot
-    // whose current occupant can safely bench instead. Only truly force-bench
-    // (with a warning) if no such swap is possible.
+    // Force-bench anyone still without a slot.
     const stillUnassigned = available.filter((p) => !assignedThisInning.has(p.id));
     for (const player of stillUnassigned) {
       const ps = state.get(player.id)!;
       const wouldViolateBench =
         rules.maxConsecutiveBench > 0 &&
         ps.consecutiveBench >= rules.maxConsecutiveBench;
-
-      let rescued = false;
+      inning.slots.push({ position: "Bench", playerId: player.id });
+      assignedThisInning.add(player.id);
       if (wouldViolateBench) {
-        // Find a non-locked non-P non-C field slot whose occupant can bench safely
-        const rescueSlot = inning.slots.find((s) => {
-          if (!s.playerId || s.locked) return false;
-          if (!isFieldPos(s.position) || s.position === "P" || s.position === "C") return false;
-          if (
-            rules.enforcePositionEligibility &&
-            !player.eligiblePositions.includes(s.position)
-          ) return false;
-          const occupantPs = state.get(s.playerId)!;
-          // The occupant must be able to bench without a consecutive violation
-          return occupantPs.consecutiveBench < rules.maxConsecutiveBench;
-        });
-
-        if (rescueSlot) {
-          const occupantId = rescueSlot.playerId!;
-          const occupantPs = state.get(occupantId)!;
-
-          // Move the at-risk player into the field slot
-          rescueSlot.playerId = player.id;
-          assignedThisInning.add(player.id);
-          ps.fieldInnings++;
-          ps.consecutiveBench = 0;
-          ps.positionsPlayed.add(rescueSlot.position);
-          ps.lastPosition = rescueSlot.position;
-
-          // Move the occupant to a new bench slot instead
-          inning.slots.push({ position: "Bench", playerId: occupantId });
-          // Undo the occupant's field state contribution from this inning
-          occupantPs.fieldInnings--;
-          occupantPs.consecutiveBench++;
-          occupantPs.benchInnings++;
-          occupantPs.lastPosition = "Bench";
-          occupantPs.positionsPlayed.add("Bench");
-
-          rescued = true;
-        }
-      }
-
-      if (!rescued) {
-        const slot: InningSlot = { position: "Bench", playerId: player.id };
-        inning.slots.push(slot);
-        assignedThisInning.add(player.id);
-        ps.benchInnings++;
-        ps.consecutiveBench++;
-        ps.positionsPlayed.add("Bench");
-        ps.lastPosition = "Bench";
-        if (wouldViolateBench) {
-          warnings.push(
-            `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
-            `force-benched — no eligible swap partner to avoid back-to-back bench.`
-          );
-        }
+        warnings.push(
+          `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
+          `force-benched — no eligible field slot available to avoid back-to-back bench.`
+        );
       }
     }
 
     log.push(
       `Inning ${inningNumber}: assigned ${assignedThisInning.size - lockedPlayerIds.size} player(s).`
     );
-  }
-
-  // ── Post-solve repair: back-to-back bench ────────────────────────────────
-  // The greedy solver processes innings forward and can't backtrack. It may
-  // leave a player in back-to-back bench if no eligible field slot was open at
-  // the time. After the full solve, scan for those violations and fix them by
-  // swapping the benched player into a field slot held by a player who can
-  // safely bench instead. P and C slots are excluded from swaps so that
-  // pitcher/catcher plans (locked or not) are never disturbed by auto-fill.
-  // Each pass restarts from inning 1 after any swap; we cap at 30 passes to
-  // prevent infinite loops in pathological eligibility configurations.
-  if (rules.maxConsecutiveBench > 0) {
-    const MAX_REPAIR_PASSES = 30;
-    for (let pass = 0; pass < MAX_REPAIR_PASSES; pass++) {
-      let swappedThisPass = false;
-
-      for (const inn of resultInnings) {
-        const benchViolators = inn.slots.filter(
-          (s) => s.playerId && s.position === "Bench" && !s.locked
-        );
-
-        for (const bSlot of benchViolators) {
-          const pid = bSlot.playerId!;
-          const consecutive = benchConsecutiveCount(
-            pid,
-            resultInnings,
-            inn.inning,
-            overrides
-          );
-          if (consecutive <= rules.maxConsecutiveBench) continue;
-
-          // Find a swap partner: an unlocked field slot (not P or C) whose
-          // current occupant can safely move to bench without triggering their
-          // own back-to-back violation.
-          const benchedPlayer = players.find((p) => p.id === pid);
-          if (!benchedPlayer) continue;
-
-          const fieldCandidates = inn.slots.filter(
-            (s) =>
-              s.playerId &&
-              !s.locked &&
-              isFieldPos(s.position) &&
-              s.position !== "P" &&
-              s.position !== "C"
-          );
-
-          for (const fSlot of fieldCandidates) {
-            const swapId = fSlot.playerId!;
-
-            // Eligibility: benched player must be eligible for the field position
-            if (
-              rules.enforcePositionEligibility &&
-              !benchedPlayer.eligiblePositions.includes(fSlot.position)
-            ) continue;
-
-            // Safety: would the swap candidate create a back-to-back by benching here?
-            const swapConsec = benchConsecutiveCount(
-              swapId,
-              resultInnings,
-              inn.inning - 1,
-              overrides
-            );
-            if (swapConsec >= rules.maxConsecutiveBench) continue;
-
-            // Perform the swap
-            fSlot.playerId = pid;
-            bSlot.playerId = swapId;
-            swappedThisPass = true;
-            break;
-          }
-
-          if (swappedThisPass) break; // restart inning scan after each swap
-        }
-        if (swappedThisPass) break;
-      }
-
-      if (!swappedThisPass) break; // no more violations fixable
-    }
-  }
-
-  // ── Post-solve fair-play check ─────────────────────────────────────────
-  for (const player of players) {
-    const override = overrides.find((o) => o.playerId === player.id);
-    if (override?.status === "absent") continue;
-    const ps = state.get(player.id)!;
-    if (
-      rules.enforceFairPlayTime &&
-      ps.fieldInnings < rules.minFieldInningsPerPlayer
-    ) {
-      warnings.push(
-        `${player.firstName} ${player.lastInitial}. only received ${ps.fieldInnings} field inning(s) — minimum is ${rules.minFieldInningsPerPlayer}. Consider adjusting eligibility or adding innings.`
-      );
-    }
   }
 
   return { innings: resultInnings, log, feasible, warnings };
