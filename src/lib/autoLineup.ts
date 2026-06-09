@@ -429,10 +429,18 @@ function _solveOnce(
     // from bench selection and always receive a field slot.
     //
     // Bench score (higher = more likely to sit):
-    //   +100 per field inning already played  → bench those who've played most
-    //   -10  per consecutive bench inning     → avoid re-benching recent sitters
+    //   +100 per field inning already played     → bench those who've played most
+    //   -10  per consecutive bench inning        → avoid re-benching recent sitters
+    //   +(defRating-2.5)×(1-2×progress)×80      → stronger defenders bench early,
+    //                                               weaker defenders bench late
+    // Tier constraint: for defenseRating >= 3, keep at least 1 player of that
+    // tier on the field — don't bench all top-tier defenders at once.
     // Players who cannot afford to sit (would miss the minimum-field-innings
     // guarantee given remaining innings) are filtered out entirely.
+
+    // progress: 0.0 at inning 1, 1.0 at last inning
+    const progress = totalInnings > 1 ? (inningNumber - 1) / (totalInnings - 1) : 0;
+    const DEFENSE_WEIGHT = 80;
 
     const benchCount = Math.max(
       0,
@@ -462,15 +470,48 @@ function _solveOnce(
             return { player: p, benchScore: -Infinity };
           }
         }
+        const defRating = p.defenseRating ?? 2.5;
+        const defContrib = (defRating - 2.5) * (1 - 2 * progress) * DEFENSE_WEIGHT;
         return {
           player: p,
-          benchScore: ps.fieldInnings * 100 - ps.consecutiveBench * 10,
+          benchScore: ps.fieldInnings * 100 - ps.consecutiveBench * 10 + defContrib,
         };
       })
       .filter((x) => x.benchScore !== -Infinity)
       .sort((a, b) => b.benchScore - a.benchScore);
 
-    const selectedBench = benchCandidates.slice(0, benchCount).map((x) => x.player);
+    // Tier constraint: count how many of each top-tier (defenseRating >= 3) are
+    // available. Never bench all of them — keep at least 1 per tier on the field.
+    const tierAvailableCount = new Map<number, number>();
+    for (const p of postPCAvailable) {
+      const tier = p.defenseRating;
+      if (tier && tier >= 3) {
+        tierAvailableCount.set(tier, (tierAvailableCount.get(tier) ?? 0) + 1);
+      }
+    }
+    const tierBenchedCount = new Map<number, number>();
+    const selectedBench: Player[] = [];
+    const skipped: typeof benchCandidates = [];
+
+    for (const candidate of benchCandidates) {
+      if (selectedBench.length >= benchCount) break;
+      const tier = candidate.player.defenseRating;
+      if (tier && tier >= 3) {
+        const avail = tierAvailableCount.get(tier) ?? 0;
+        const alreadyBenched = tierBenchedCount.get(tier) ?? 0;
+        if (alreadyBenched >= avail - 1) {
+          skipped.push(candidate);
+          continue;
+        }
+        tierBenchedCount.set(tier, alreadyBenched + 1);
+      }
+      selectedBench.push(candidate.player);
+    }
+    // If bench isn't full yet, relax tier constraint using skipped candidates
+    for (const candidate of skipped) {
+      if (selectedBench.length >= benchCount) break;
+      selectedBench.push(candidate.player);
+    }
 
     // Ensure enough bench slots exist (share the same object reference so the
     // direct assignment below propagates into inning.slots)
