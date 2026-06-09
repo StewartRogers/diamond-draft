@@ -13,6 +13,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const season = (await request.json()) as Season;
+  if (!season || typeof season !== "object") {
+    return new Response("Invalid season body", { status: 400 });
+  }
   saveSeason({ ...season, id });
   return Response.json({ ...season, id });
 }

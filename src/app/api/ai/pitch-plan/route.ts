@@ -94,13 +94,22 @@ export async function POST(request: Request) {
     },
   });
 
-  const parsed = JSON.parse(response.text || "{}") as PlanResponse;
-  const assignments = parsed.assignments
+  let parsed: PlanResponse;
+  try {
+    parsed = JSON.parse(response.text || "{}") as PlanResponse;
+  } catch {
+    return new Response("AI returned invalid JSON", { status: 502 });
+  }
+
+  // Only accept player IDs that actually belong to this game's roster.
+  // The model can hallucinate or be prompted to inject arbitrary strings.
+  const rosterIds = new Set(roster.map((p) => p.id));
+  const assignments = (parsed.assignments ?? [])
     .filter((item) => item.inning >= 1 && item.inning <= game.innings.length)
     .map((item) => ({
       inning: item.inning,
-      pitcherId: item.pitcherId ?? null,
-      catcherId: item.catcherId ?? null,
+      pitcherId: item.pitcherId && rosterIds.has(item.pitcherId) ? item.pitcherId : null,
+      catcherId: item.catcherId && rosterIds.has(item.catcherId) ? item.catcherId : null,
     }))
     .sort((a, b) => a.inning - b.inning);
 
