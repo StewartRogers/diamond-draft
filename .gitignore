@@ -45,6 +45,17 @@ yarn-error.log*
 # SQLite WAL/SHM journal files (runtime, not source)
 data/*.sqlite3-wal
 data/*.sqlite3-shm
+# main SQLite database files
+data/*.sqlite3
+
+# local editors/IDE
+.vscode/
+.history/
+
+# private keys and certificates
+*.key
+*.pem
+*.crt
 
 # typescript
 *.tsbuildinfo
