@@ -9,6 +9,9 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const settings = (await request.json()) as AppSettings;
+  if (!settings || typeof settings !== "object") {
+    return new Response("Invalid settings body", { status: 400 });
+  }
   saveSettings(settings);
   return Response.json(settings);
 }
