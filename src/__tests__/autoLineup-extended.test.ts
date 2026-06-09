@@ -725,6 +725,68 @@ describe("auto-fill run twice on same innings — no stale-data violations", () 
   });
 });
 
+// ─── Zero violations after single auto-fill (regression for must-play priority) ─
+//
+// With 10 players and 6 innings, every player should bench exactly once or twice
+// but never back-to-back. The solver's -10000 must-play score bonus combined with
+// the inline rescue swap in the force-bench handler must ensure zero violations.
+
+describe("zero violations after a single auto-fill — 10-player roster", () => {
+  function makeGameFrom(innings: InningAssignment[]): Game {
+    return {
+      id: "test-game",
+      date: "2026-01-01",
+      pitchCatchAssignments: [],
+      innings,
+      battingOrder: [],
+      playerOverrides: [],
+      rosterSnapshot: [],
+      status: "draft",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  it("produces no BACK_TO_BACK_BENCH violations (the exact user-reported bug)", () => {
+    const players = makeRoster(10);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+    const result = buildAutoLineup(players, innings, [], rules, GAME);
+    const game = makeGameFrom(result.innings);
+    const violations = validateGame(game, players, rules);
+    expect(violations.filter((v) => v.code === "BACK_TO_BACK_BENCH")).toEqual([]);
+  });
+
+  it("produces no error violations at all with a standard 10-player 6-inning game", () => {
+    const players = makeRoster(10);
+    const innings = makeInnings(6);
+    const rules = makeRules({ enforcePositionEligibility: false, maxConsecutiveBench: 1 });
+    const result = buildAutoLineup(players, innings, [], rules, GAME);
+    const game = makeGameFrom(result.innings);
+    const violations = validateGame(game, players, rules);
+    const errors = violations.filter((v) => v.severity === "error");
+    expect(errors).toEqual([]);
+  });
+
+  it("produces no BACK_TO_BACK_BENCH violations with 11 players and 6 innings", () => {
+    const players = makeRoster(11);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+    const result = buildAutoLineup(players, innings, [], rules, GAME);
+    const game = makeGameFrom(result.innings);
+    const violations = validateGame(game, players, rules);
+    expect(violations.filter((v) => v.code === "BACK_TO_BACK_BENCH")).toEqual([]);
+  });
+});
+
 // ─── All players absent ───────────────────────────────────────────────────────
 
 describe("all players absent", () => {
