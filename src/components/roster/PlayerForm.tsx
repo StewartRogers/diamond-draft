@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Player, Position, FieldPosition, PositionRating, DefenseRating } from "@/lib/types";
-import { FIELD_POSITIONS, ALL_POSITIONS } from "@/lib/types";
+import { FIELD_POSITIONS, ALL_POSITIONS, DEFENSE_TIER_CFG } from "@/lib/types";
 
 // Tier display config — used in both the cycling buttons and the legend
 const TIER_CFG = {
@@ -51,13 +51,17 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
   );
 
   // Field positions cycle: Off → Tier 1 → Tier 2 → Tier 3 → Off
+  // A position that is eligible but has no rating (e.g. loaded from legacy data
+  // before tier ratings existed) is treated as "unrated" and bumped to Tier 1.
   function cycleFieldPosition(pos: FieldPosition) {
     const currentRating = positionRatings[pos];
     const isEligible = eligiblePositions.includes(pos);
 
-    if (!isEligible) {
-      // Off → Tier 1
-      setEligiblePositions((prev) => [...prev, pos]);
+    if (!isEligible || currentRating === undefined) {
+      // Off or eligible-but-unrated → Tier 1
+      if (!isEligible) {
+        setEligiblePositions((prev) => [...prev, pos]);
+      }
       setPositionRatings((prev) => ({ ...prev, [pos]: 1 as PositionRating }));
     } else if (currentRating === 1) {
       // Tier 1 → Tier 2
@@ -66,7 +70,7 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
       // Tier 2 → Tier 3
       setPositionRatings((prev) => ({ ...prev, [pos]: 3 as PositionRating }));
     } else {
-      // Tier 3 (or rated but missing rating edge case) → Off
+      // Tier 3 → Off
       setEligiblePositions((prev) => prev.filter((p) => p !== pos));
       setPositionRatings((prev) => {
         const next = { ...prev };
@@ -167,14 +171,8 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
           <span className="text-xs text-slate-500">click to set · click again to clear</span>
         </div>
         <div className="flex gap-2">
-          {(
-            [
-              { tier: 1 as DefenseRating, label: "Developing",  bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
-              { tier: 2 as DefenseRating, label: "Average",     bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
-              { tier: 3 as DefenseRating, label: "Strong",      bg: "#dcfce7", border: "#22c55e", text: "#166534" },
-              { tier: 4 as DefenseRating, label: "Elite",       bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
-            ] as const
-          ).map(({ tier, label, bg, border, text }) => {
+          {([1, 2, 3, 4] as DefenseRating[]).map((tier) => {
+            const { label, bg, border, text } = DEFENSE_TIER_CFG[tier];
             const active = defenseRating === tier;
             return (
               <button
