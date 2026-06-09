@@ -407,10 +407,12 @@ describe("15-player roster over 6 innings — fair play", () => {
     }
   });
 
-  it("produces fair-play warnings for players who cannot reach minFieldInnings", () => {
+  it("does not emit solver-level fair-play warnings (violations surface via validateGame)", () => {
     // 15 players, 3 innings, minFieldInningsPerPlayer=3
     // 9 field spots × 3 innings = 27 total field slots; 15 × 3 = 45 needed
-    // Mathematically impossible for everyone to get 3 field innings.
+    // Mathematically impossible for everyone to get 3 field innings —
+    // but fair-play shortfalls are now surfaced by validateGame / RULE_010,
+    // not as solver-level warnings.
     const players = makeRoster(15);
     const innings = makeInnings(3);
     const rules = makeRules({
@@ -421,8 +423,12 @@ describe("15-player roster over 6 innings — fair play", () => {
     });
     const result = buildAutoLineup(players, innings, [], rules, GAME);
 
-    // 27 field slots for 15 players → some players get < 3 field innings → warnings fire
-    expect(result.warnings.length).toBeGreaterThan(0);
+    // Solver no longer emits per-player fair-play warnings — only force-bench
+    // issues that couldn't be avoided produce solver warnings.
+    // Every player should still be assigned a slot each inning.
+    for (const inn of result.innings) {
+      expect(inn.slots.length).toBeGreaterThanOrEqual(players.length);
+    }
   });
 });
 

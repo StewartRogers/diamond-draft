@@ -54,7 +54,7 @@ function isPlayerAvailableInInning(
 }
 
 /** Count how many innings pitched by a player in this game up to (not including) the given inning. */
-function inningsPitchedInGameBefore(
+export function inningsPitchedInGameBefore(
   playerId: string,
   innings: InningAssignment[],
   beforeInning: number
@@ -70,7 +70,7 @@ function inningsPitchedInGameBefore(
 }
 
 /** Total innings pitched by a player in a game. */
-function totalInningsPitchedInGame(
+export function totalInningsPitchedInGame(
   playerId: string,
   innings: InningAssignment[]
 ): number {
@@ -92,7 +92,7 @@ function seasonInningsPitched(player: Player, currentGameId: string): number {
 /** Count consecutive bench innings ending at (and including) the given inning.
  *  Stops counting at the first inning the player was not yet available (late arrival)
  *  or is no longer available (early departure) — those innings don't count against them. */
-function consecutiveBenchInnings(
+export function consecutiveBenchInnings(
   playerId: string,
   innings: InningAssignment[],
   upToInning: number,
@@ -121,7 +121,7 @@ function consecutiveBenchInnings(
  * *actual* pitcher (P position only — excludes Bullpen warm-up).
  * Used by RULE_009 to detect removal from the pitcher role.
  */
-function lastActualPitchingInningBefore(
+export function lastActualPitchingInningBefore(
   playerId: string,
   innings: InningAssignment[],
   beforeInning: number
@@ -139,7 +139,7 @@ function lastActualPitchingInningBefore(
 }
 
 /** Returns the last inning number ( < beforeInning) when the player pitched, or null. */
-function lastInningPitchedBefore(
+export function lastInningPitchedBefore(
   playerId: string,
   innings: InningAssignment[],
   beforeInning: number
@@ -157,7 +157,7 @@ function lastInningPitchedBefore(
 }
 
 /** Count total field innings for a player across all innings. */
-function totalFieldInnings(
+export function totalFieldInnings(
   playerId: string,
   innings: InningAssignment[]
 ): number {
