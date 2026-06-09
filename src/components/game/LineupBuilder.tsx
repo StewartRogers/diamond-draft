@@ -78,7 +78,7 @@ const CSS = `
 .ddg .colbat{width:66px}
 .ddg .colplayer{width:228px}
 .ddg .inncol{border-right:1px solid #e5e2d9}
-.ddg .inncol:last-child{border-right:none}
+.ddg .colbench{width:42px;border-left:2px solid #e3e0d8}
 .ddg thead th{background:#faf8f3;font-family:var(--font-ibm-mono),'IBM Plex Mono',monospace;font-size:11px;font-weight:600;letter-spacing:.04em;color:#6f6a60;text-transform:uppercase;padding:10px 0;border-bottom:1.5px solid #d9d5cb}
 .ddg thead th.sorted{color:#3f6212;background:#f3f4ea}
 .ddg tbody td{height:48px}
@@ -237,6 +237,9 @@ function PlayerRow({
   editKey: string | null;
   onCell: (e: React.MouseEvent, id: string, inn: number) => void;
 }) {
+  const benchCount = sched.filter((v) => v === "BENCH").length;
+  const benchColor = benchCount === 0 ? "#c8c4bb" : benchCount >= 3 ? "#c2410c" : benchCount >= 2 ? "#ca8a04" : "#211f1b";
+
   return (
     <tr data-rid={id} style={{ opacity: scratched ? 0.55 : 1 }}>
       <td className="colbat" style={{ background: scratched ? "#f4f2ec" : "#fff" }}>
@@ -284,6 +287,12 @@ function PlayerRow({
           onClick={(e) => onCell(e, id, i)}
         />
       ))}
+      {/* Bench count */}
+      <td className="colbench" title={`${benchCount} bench inning${benchCount !== 1 ? "s" : ""}`}>
+        <span style={{ fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 14, fontWeight: 700, color: benchColor }}>
+          {benchCount}
+        </span>
+      </td>
     </tr>
   );
 }
@@ -958,12 +967,14 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
               <colgroup>
                 <col className="colbat" /><col className="colplayer" />
                 {INN.map((n) => <col key={n} />)}
+                <col className="colbench" />
               </colgroup>
               <thead>
                 <tr>
                   <th className={"colbat" + (sort === "bat" ? " sorted" : "")}>BAT</th>
                   <th className="colplayer" style={{ textAlign: "left", paddingLeft: 14 }}>PLAYER</th>
                   {INN.map((i) => <th key={i} className="inncol">Inn {i + 1}</th>)}
+                  <th className="colbench" title="Total bench innings">🪑</th>
                 </tr>
               </thead>
               <tbody>
@@ -993,6 +1004,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                       {n}<span style={{ color: "#b3aea3" }}>/9</span>
                     </td>
                   ))}
+                  <td className="colbench" />
                 </tr>
               </tfoot>
             </table>
