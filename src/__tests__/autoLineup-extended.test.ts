@@ -622,6 +622,109 @@ describe("auto-fill produces no rule violations (standard configurations)", () =
   });
 });
 
+// ─── Re-running auto-fill on already-filled innings (stale-data regression) ──
+//
+// When the user clicks "Auto-fill" on a game that was already auto-filled,
+// the innings already contain non-locked playerIds and possibly extra bench
+// slots added dynamically by a previous force-bench run. The solver must
+// clear non-locked slot assignments before each inning so that stale ids
+// don't produce false BACK_TO_BACK_BENCH or PLAYER_MULTIPLE_POSITIONS violations.
+
+describe("auto-fill run twice on same innings — no stale-data violations", () => {
+  function makeGameFrom(innings: InningAssignment[]): Game {
+    return {
+      ...GAME_STUB,
+      date: "2026-01-01",
+      pitchCatchAssignments: [],
+      innings,
+      battingOrder: [],
+      playerOverrides: [],
+      rosterSnapshot: [],
+      status: "draft" as const,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+  }
+
+  it("second auto-fill on 13-player game produces no error violations", () => {
+    const players = makeRoster(13);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+
+    // Run 1 — simulates first click of auto-fill
+    const run1 = buildAutoLineup(players, innings, [], rules, GAME_STUB);
+    // Run 2 — simulates second click (innings now contain run-1 assignments)
+    const run2 = buildAutoLineup(players, run1.innings, [], rules, GAME_STUB);
+
+    const game = makeGameFrom(run2.innings);
+    const violations = validateGame(game, players, rules);
+    const errors = violations.filter((v) => v.severity === "error");
+    expect(errors).toEqual([]);
+  });
+
+  it("second auto-fill produces no PLAYER_MULTIPLE_POSITIONS (stale bench slots)", () => {
+    const players = makeRoster(13);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+
+    const run1 = buildAutoLineup(players, innings, [], rules, GAME_STUB);
+    const run2 = buildAutoLineup(players, run1.innings, [], rules, GAME_STUB);
+
+    const game = makeGameFrom(run2.innings);
+    const violations = validateGame(game, players, rules);
+    const multiPos = violations.filter((v) => v.code === "PLAYER_MULTIPLE_POSITIONS");
+    expect(multiPos).toEqual([]);
+  });
+
+  it("third auto-fill (three consecutive runs) still produces no violations", () => {
+    const players = makeRoster(13);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+
+    const run1 = buildAutoLineup(players, innings, [], rules, GAME_STUB);
+    const run2 = buildAutoLineup(players, run1.innings, [], rules, GAME_STUB);
+    const run3 = buildAutoLineup(players, run2.innings, [], rules, GAME_STUB);
+
+    const game = makeGameFrom(run3.innings);
+    const violations = validateGame(game, players, rules);
+    const errors = violations.filter((v) => v.severity === "error");
+    expect(errors).toEqual([]);
+  });
+
+  it("repair pass fixes back-to-back bench that greedy solver leaves behind", () => {
+    // Simulate a scenario where the greedy pass alone would leave a violation:
+    // 12 players, maxConsecutiveBench=1. After run1, some player may be force-benched
+    // back-to-back. Run2 with stale slots + repair pass must produce clean output.
+    const players = makeRoster(12);
+    const innings = makeInnings(6);
+    const rules = makeRules({
+      enforcePositionEligibility: false,
+      maxConsecutiveBench: 1,
+      enforceFairPlayTime: false,
+    });
+
+    const run1 = buildAutoLineup(players, innings, [], rules, GAME_STUB);
+    const run2 = buildAutoLineup(players, run1.innings, [], rules, GAME_STUB);
+
+    const game = makeGameFrom(run2.innings);
+    const violations = validateGame(game, players, rules);
+    const btb = violations.filter((v) => v.code === "BACK_TO_BACK_BENCH");
+    expect(btb).toEqual([]);
+  });
+});
+
 // ─── All players absent ───────────────────────────────────────────────────────
 
 describe("all players absent", () => {

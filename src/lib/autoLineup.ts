@@ -71,6 +71,30 @@ function isBenchPos(pos: Position): boolean {
   return pos === "Bench";
 }
 
+/**
+ * Count consecutive bench innings for a player ending at (and including)
+ * upToInning, stopping when an inning where the player is unavailable is found.
+ * Reads directly from innings data — used by the post-solve repair pass.
+ */
+function benchConsecutiveCount(
+  playerId: string,
+  innings: InningAssignment[],
+  upToInning: number,
+  overrides: PlayerGameOverride[]
+): number {
+  const sorted = innings
+    .filter((i) => i.inning <= upToInning)
+    .sort((a, b) => b.inning - a.inning);
+  let count = 0;
+  for (const inn of sorted) {
+    if (!playerAvailableInInning(playerId, inn.inning, overrides)) break;
+    const slot = inn.slots.find((s) => s.playerId === playerId);
+    if (!slot || slot.position === "Bench") count++;
+    else break;
+  }
+  return count;
+}
+
 function playerAvailableInInning(
   playerId: string,
   inning: number,
@@ -143,6 +167,17 @@ export function buildAutoLineup(
   for (let inningIdx = 0; inningIdx < totalInnings; inningIdx++) {
     const inningNumber = inningIdx + 1;
     const inning = resultInnings[inningIdx];
+
+    // ── Clear stale non-locked assignments ───────────────────────────────
+    // When auto-fill is run on a game that was previously auto-filled, the
+    // innings already contain playerIds in unlocked slots (from the prior run).
+    // Extra bench slots added dynamically by a previous force-bench also persist
+    // with their old IDs. Clearing them here ensures the solver assigns from a
+    // clean slate on every run, preventing ghost assignments that would show as
+    // PLAYER_MULTIPLE_POSITIONS or false BACK_TO_BACK_BENCH violations.
+    for (const slot of inning.slots) {
+      if (!slot.locked) slot.playerId = null;
+    }
 
     // ── Collect locked assignments first ──────────────────────────────────
     const lockedPlayerIds = new Set<string>();
@@ -393,6 +428,84 @@ export function buildAutoLineup(
     log.push(
       `Inning ${inningNumber}: assigned ${assignedThisInning.size - lockedPlayerIds.size} player(s).`
     );
+  }
+
+  // ── Post-solve repair: back-to-back bench ────────────────────────────────
+  // The greedy solver processes innings forward and can't backtrack. It may
+  // leave a player in back-to-back bench if no eligible field slot was open at
+  // the time. After the full solve, scan for those violations and fix them by
+  // swapping the benched player into a field slot held by a player who can
+  // safely bench instead. P and C slots are excluded from swaps so that
+  // pitcher/catcher plans (locked or not) are never disturbed by auto-fill.
+  // Each pass restarts from inning 1 after any swap; we cap at 30 passes to
+  // prevent infinite loops in pathological eligibility configurations.
+  if (rules.maxConsecutiveBench > 0) {
+    const MAX_REPAIR_PASSES = 30;
+    for (let pass = 0; pass < MAX_REPAIR_PASSES; pass++) {
+      let swappedThisPass = false;
+
+      for (const inn of resultInnings) {
+        const benchViolators = inn.slots.filter(
+          (s) => s.playerId && s.position === "Bench" && !s.locked
+        );
+
+        for (const bSlot of benchViolators) {
+          const pid = bSlot.playerId!;
+          const consecutive = benchConsecutiveCount(
+            pid,
+            resultInnings,
+            inn.inning,
+            overrides
+          );
+          if (consecutive <= rules.maxConsecutiveBench) continue;
+
+          // Find a swap partner: an unlocked field slot (not P or C) whose
+          // current occupant can safely move to bench without triggering their
+          // own back-to-back violation.
+          const benchedPlayer = players.find((p) => p.id === pid);
+          if (!benchedPlayer) continue;
+
+          const fieldCandidates = inn.slots.filter(
+            (s) =>
+              s.playerId &&
+              !s.locked &&
+              isFieldPos(s.position) &&
+              s.position !== "P" &&
+              s.position !== "C"
+          );
+
+          for (const fSlot of fieldCandidates) {
+            const swapId = fSlot.playerId!;
+
+            // Eligibility: benched player must be eligible for the field position
+            if (
+              rules.enforcePositionEligibility &&
+              !benchedPlayer.eligiblePositions.includes(fSlot.position)
+            ) continue;
+
+            // Safety: would the swap candidate create a back-to-back by benching here?
+            const swapConsec = benchConsecutiveCount(
+              swapId,
+              resultInnings,
+              inn.inning - 1,
+              overrides
+            );
+            if (swapConsec >= rules.maxConsecutiveBench) continue;
+
+            // Perform the swap
+            fSlot.playerId = pid;
+            bSlot.playerId = swapId;
+            swappedThisPass = true;
+            break;
+          }
+
+          if (swappedThisPass) break; // restart inning scan after each swap
+        }
+        if (swappedThisPass) break;
+      }
+
+      if (!swappedThisPass) break; // no more violations fixable
+    }
   }
 
   // ── Post-solve fair-play check ─────────────────────────────────────────
