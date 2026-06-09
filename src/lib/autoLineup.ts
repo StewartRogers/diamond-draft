@@ -237,6 +237,14 @@ function _solveOnce(
     players.map((p) => [p.id, seasonPitchingInnings(p, game.id)])
   );
 
+  log.push(`Auto-fill: ${players.length} players, ${totalInnings} innings`);
+
+  const pName = (p: Player) => `${p.firstName} ${p.lastInitial}.`;
+  const tierLabel = (player: Player, pos: Position): string => {
+    const tier = (player.positionRatings as Partial<Record<string, number>> | undefined)?.[pos];
+    return tier === 1 ? "primary" : tier === 2 ? "secondary" : tier === 3 ? "can-play" : "unrated";
+  };
+
   // Build result innings, respecting locked slots
   const resultInnings: InningAssignment[] = existingInnings.map((inn) => ({
     ...inn,
@@ -299,6 +307,8 @@ function _solveOnce(
     );
 
     const assignedThisInning = new Set<string>(lockedPlayerIds);
+
+    log.push(`── Inning ${inningNumber} — ${available.length} available${lockedPlayerIds.size > 0 ? `, ${lockedPlayerIds.size} locked` : ""} ──`);
 
     // ── Score function for field/bullpen positions ────────────────────────
     // Returns Infinity for hard violations; lower = more desirable.
@@ -387,31 +397,93 @@ function _solveOnce(
       return s;
     }
 
+    const hardConstraintReason = (player: Player, pos: Position): string | null => {
+      const ps = state.get(player.id);
+      if (!ps) return null;
+      if (rules.enforcePositionEligibility && isFieldPosition(pos) && !player.eligiblePositions.includes(pos))
+        return "not eligible";
+      if (isPitchingPos(pos)) {
+        const gameLimit =
+          player.pitchingLimitGame > 0
+            ? player.pitchingLimitGame
+            : rules.globalPitchingLimitGame > 0
+            ? rules.globalPitchingLimitGame
+            : Infinity;
+        if (ps.pitchInnings + 1 > gameLimit)
+          return `pitch limit ${ps.pitchInnings}/${isFinite(gameLimit) ? gameLimit : "∞"} inn`;
+        if (player.pitchingLimitSeason > 0) {
+          const seasonTotal = seasonPitchMap.get(player.id) ?? 0;
+          if (seasonTotal + ps.pitchInnings + 1 > player.pitchingLimitSeason)
+            return `season limit (${seasonTotal + ps.pitchInnings}/${player.pitchingLimitSeason} inn)`;
+        }
+        if (rules.enforceNoPitchingAfterCatching) {
+          const caughtBefore = [...ps.positionsPlayed].some(isCatchingPos);
+          if (caughtBefore) return "caught earlier this game";
+        }
+        if (pos === "P" && ps.lastActualPitchInning != null) {
+          const ref = ps.lastPitchInning ?? ps.lastActualPitchInning;
+          if (inningNumber - ref - 1 > 0)
+            return `removed from P (inn ${ps.lastActualPitchInning}) — RULE_009`;
+        }
+        if (rules.pitchingRestInnings && ps.lastPitchInning != null) {
+          const gap = inningNumber - ps.lastPitchInning - 1;
+          if (gap < rules.pitchingRestInnings)
+            return `needs ${rules.pitchingRestInnings - gap} more rest inn`;
+        }
+      }
+      return null;
+    };
+
     const tryAssign = (
       slots: InningSlot[],
-      candidatePlayers: Player[]
+      candidatePlayers: Player[],
+      phase: "pc" | "field" | "bullpen" = "field"
     ): void => {
       for (const slot of slots) {
         const unassigned = candidatePlayers.filter(
           (p) => !assignedThisInning.has(p.id)
         );
 
-        const scored = unassigned
-          .map((p) => ({ player: p, s: score(p, slot.position) }))
-          .filter((x) => x.s < Infinity)
-          .sort((a, b) => a.s - b.s);
+        const allScored = unassigned.map((p) => ({ player: p, s: score(p, slot.position) }));
+        const eligible = allScored.filter((x) => x.s < Infinity).sort((a, b) => a.s - b.s);
+        const blocked = allScored.filter((x) => x.s === Infinity);
 
-        if (scored.length === 0) {
+        if (eligible.length === 0) {
           warnings.push(
             `Inning ${inningNumber}: no eligible player found for ${slot.position}.`
           );
+          log.push(`  ⚠ ${slot.position}: no eligible player (${blocked.length} candidate(s) all blocked)`);
+          blocked.slice(0, 4).forEach((x) => {
+            const reason = hardConstraintReason(x.player, slot.position) ?? "ineligible";
+            log.push(`      ${pName(x.player)} — ${reason}`);
+          });
           feasible = false;
           continue;
         }
 
-        const best = scored[0].player;
+        const best = eligible[0].player;
         slot.playerId = best.id;
         assignedThisInning.add(best.id);
+
+        if (phase === "pc") {
+          const ps = state.get(best.id)!;
+          const detail = isPitchingPos(slot.position)
+            ? `${ps.pitchInnings} pitch inn`
+            : `${ps.fieldInnings} field inn`;
+          log.push(`  ${slot.position}: ${pName(best)} — ${tierLabel(best, slot.position)}, ${detail}`);
+          if (blocked.length > 0) {
+            const blockedList = blocked.slice(0, 3).map((x) => {
+              const reason = hardConstraintReason(x.player, slot.position) ?? "ineligible";
+              return `${pName(x.player)} [${reason}]`;
+            });
+            log.push(`    Skipped: ${blockedList.join(" · ")}`);
+          }
+        } else if (phase === "bullpen") {
+          log.push(`  ${slot.position}: ${pName(best)}`);
+        } else {
+          const ps = state.get(best.id)!;
+          log.push(`  ${slot.position}: ${pName(best)} — ${tierLabel(best, slot.position)}, ${ps.fieldInnings} field inn`);
+        }
       }
     };
 
@@ -424,7 +496,7 @@ function _solveOnce(
       .filter((s) => s.position === "P" || s.position === "C")
       .sort((a) => (a.position === "P" ? -1 : 1));
 
-    tryAssign(pitchCatchSlots.slice(0, fieldSpotsNeeded), available);
+    tryAssign(pitchCatchSlots.slice(0, fieldSpotsNeeded), available, "pc");
 
     const filledPCCount = pitchCatchSlots.filter((s) => s.playerId !== null).length;
     const remainingFieldSpotsNeeded = Math.max(0, fieldSpotsNeeded - filledPCCount);
@@ -547,6 +619,22 @@ function _solveOnce(
       assignedThisInning.add(selectedBench[i].id);
     }
 
+    if (mustFieldIds.size > 0) {
+      const mustNames = [...mustFieldIds]
+        .map((id) => players.find((p) => p.id === id))
+        .filter(Boolean)
+        .map((p) => pName(p!))
+        .join(", ");
+      log.push(`  Protected (must play): ${mustNames}`);
+    }
+    if (selectedBench.length > 0) {
+      const benchDesc = selectedBench.map((p) => {
+        const ps = state.get(p.id)!;
+        return `${pName(p)} [${ps.fieldInnings} field inn, bench score ${Math.round(ps.fieldInnings * 100 - ps.consecutiveBench * 10)}]`;
+      }).join(" · ");
+      log.push(`  Bench: ${benchDesc}`);
+    }
+
     // ── PHASE 3: Fill remaining field positions ───────────────────────────
     const fieldCandidates = postPCAvailable.filter(
       (p) => !assignedThisInning.has(p.id)
@@ -572,8 +660,8 @@ function _solveOnce(
       (a, b) => (eligibleCountByPos.get(a.position) ?? 0) - (eligibleCountByPos.get(b.position) ?? 0)
     );
 
-    tryAssign(sortedOtherFieldSlots.slice(0, remainingFieldSpotsNeeded), fieldCandidates);
-    tryAssign(bullpenSlots, available);
+    tryAssign(sortedOtherFieldSlots.slice(0, remainingFieldSpotsNeeded), fieldCandidates, "field");
+    tryAssign(bullpenSlots, available, "bullpen");
 
     // Force-bench any players still without a slot. This should only happen
     // when there are genuinely more must-field players than field slots (an
@@ -595,11 +683,8 @@ function _solveOnce(
           `force-benched — no eligible field slot available to avoid back-to-back bench.`
         );
       }
+      log.push(`  Force-bench: ${pName(player)}${wouldViolateBench ? " ⚠ consecutive bench limit exceeded" : ""}`);
     }
-
-    log.push(
-      `Inning ${inningNumber}: assigned ${assignedThisInning.size - lockedPlayerIds.size} player(s).`
-    );
   }
 
   return { innings: resultInnings, log, feasible, warnings };

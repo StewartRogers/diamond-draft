@@ -49,6 +49,8 @@ export default function LineupGrid({ game, players, violations }: Props) {
   const [aiStatus, setAiStatus] = useState<string | null>(null);
   const [autoLog, setAutoLog] = useState<string[]>([]);
   const [autoWarnings, setAutoWarnings] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const [logCopied, setLogCopied] = useState(false);
   const [view, setView] = useState<"grid" | "diamond">("grid");
 
   const playerMap = new Map(players.map((p) => [p.id, p]));
@@ -62,6 +64,7 @@ export default function LineupGrid({ game, players, violations }: Props) {
     setAutoFilling(true);
     setAutoLog([]);
     setAutoWarnings([]);
+    setShowLog(false);
     const result = await autoFillGame(game.id);
     setAutoLog(result.log);
     setAutoWarnings(result.warnings);
@@ -175,6 +178,19 @@ export default function LineupGrid({ game, players, violations }: Props) {
           )}
         </button>
 
+        {(autoLog.length > 0 || autoWarnings.length > 0) && (
+          <button
+            onClick={() => setShowLog(true)}
+            className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg text-sm font-medium transition-colors border border-slate-600 flex items-center gap-1.5"
+          >
+            <span>📋</span>
+            <span>Auto-fill Log</span>
+            {autoWarnings.length > 0 && (
+              <span className="text-yellow-400 text-xs">({autoWarnings.length} ⚠)</span>
+            )}
+          </button>
+        )}
+
         {game.status !== "finalized" && (
           <button
             onClick={() => finalizeGame(game.id)}
@@ -211,15 +227,78 @@ export default function LineupGrid({ game, players, violations }: Props) {
         </div>
       ) : null}
 
-      {/* Auto-fill result log */}
-      {(autoLog.length > 0 || autoWarnings.length > 0) && (
-        <div className="bg-slate-800/60 border border-slate-700 rounded-lg p-4 text-xs space-y-1">
-          {autoWarnings.map((w, i) => (
-            <p key={i} className="text-yellow-400">⚠ {w}</p>
-          ))}
-          {autoLog.map((l, i) => (
-            <p key={i} className="text-slate-400">{l}</p>
-          ))}
+      {/* Auto-fill log modal */}
+      {showLog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setShowLog(false)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 shrink-0">
+              <span className="text-sm font-semibold text-white">Auto-fill Log</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const text = [
+                      ...autoWarnings.map((w) => `⚠ ${w}`),
+                      ...autoLog,
+                    ].join("\n");
+                    navigator.clipboard.writeText(text).then(() => {
+                      setLogCopied(true);
+                      setTimeout(() => setLogCopied(false), 2000);
+                    });
+                  }}
+                  className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors"
+                >
+                  {logCopied ? "✓ Copied!" : "Copy all"}
+                </button>
+                <button
+                  onClick={() => setShowLog(false)}
+                  className="px-3 py-1 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded transition-colors"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+            <div className="overflow-y-auto p-4 font-mono text-xs leading-relaxed">
+              {autoWarnings.map((w, i) => (
+                <div key={`w${i}`} className="text-yellow-400">⚠ {w}</div>
+              ))}
+              {autoWarnings.length > 0 && (
+                <div className="text-slate-700 my-2">{"─".repeat(40)}</div>
+              )}
+              {autoLog.map((line, i) => {
+                const isInnHeader = line.startsWith("──");
+                const isTopHeader = line.startsWith("Auto-fill:");
+                const isWarningLine = line.includes("⚠") || line.startsWith("  Force-bench:");
+                const isDeepIndent = line.startsWith("      ");
+                const isIndent = line.startsWith("    ") && !isDeepIndent;
+                return (
+                  <div
+                    key={i}
+                    className={
+                      isTopHeader
+                        ? "text-slate-400 mb-2"
+                        : isInnHeader
+                        ? "text-slate-200 font-semibold mt-3 mb-0.5"
+                        : isWarningLine
+                        ? "text-yellow-400"
+                        : isDeepIndent
+                        ? "text-slate-500"
+                        : isIndent
+                        ? "text-slate-400"
+                        : "text-slate-300"
+                    }
+                  >
+                    {line}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 
