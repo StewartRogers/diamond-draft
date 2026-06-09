@@ -69,23 +69,27 @@ export async function POST(request: Request) {
 
   const ai = makeModel();
   const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash-lite";
+  const systemContext = [
+    "You are helping build a youth baseball lineup.",
+    "Generate only pitcher/catcher assignments for each inning.",
+    "Use the provided roster IDs exactly. Return null for a slot if the request is impossible or ambiguous.",
+    `Game innings: ${game.innings.length}`,
+    `Roster: ${JSON.stringify(roster)}`,
+  ].join("\n");
   const response = await ai.models.generateContent({
     model,
     contents: [
       {
         role: "user",
-        parts: [
-          {
-            text: [
-              "You are helping build a youth baseball lineup.",
-              "Generate only pitcher/catcher assignments for each inning.",
-              "Use the provided roster IDs exactly. Return null for a slot if the request is impossible or ambiguous.",
-              `Game innings: ${game.innings.length}`,
-              `Roster: ${JSON.stringify(roster)}`,
-              `User request: ${prompt}`,
-            ].join("\n"),
-          },
-        ],
+        parts: [{ text: systemContext }],
+      },
+      {
+        role: "model",
+        parts: [{ text: "Understood. Ready to generate assignments. What is your request?" }],
+      },
+      {
+        role: "user",
+        parts: [{ text: prompt || "Please generate balanced assignments." }],
       },
     ],
     config: {
