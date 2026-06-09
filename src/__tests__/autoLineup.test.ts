@@ -458,3 +458,86 @@ describe("buildAutoLineup — defense-weighted bench scheduling", () => {
     }
   });
 });
+
+// ─── Position tier rating assignment ─────────────────────────────────────────
+
+describe("buildAutoLineup — position tier rating assignment", () => {
+  /**
+   * Count how many innings a player was assigned to a specific position.
+   */
+  function inningsAtPosition(
+    innings: InningAssignment[],
+    playerId: string,
+    pos: string
+  ): number {
+    return innings.reduce(
+      (sum, inn) =>
+        sum + (inn.slots.find((s) => s.playerId === playerId && s.position === pos) ? 1 : 0),
+      0
+    );
+  }
+
+  it("prefers a tier-1 player over a tier-3 player for the same position", () => {
+    // 9 players: one rated Tier 1 at SS, one rated Tier 3 at SS, rest eligible everywhere.
+    // The Tier 1 player should accumulate more SS innings across a 6-inning game.
+    const tier1SS = makePlayer({
+      eligiblePositions: ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"],
+      positionRatings: { SS: 1 },
+    });
+    const tier3SS = makePlayer({
+      eligiblePositions: ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"],
+      positionRatings: { SS: 3 },
+    });
+    const rest = makeRoster(7);
+    const players = [tier1SS, tier3SS, ...rest];
+    const result = buildAutoLineup(players, makeInnings(6), [], makeRules(), GAME_STUB);
+
+    const t1Innings = inningsAtPosition(result.innings, tier1SS.id, "SS");
+    const t3Innings = inningsAtPosition(result.innings, tier3SS.id, "SS");
+    expect(t1Innings).toBeGreaterThanOrEqual(t3Innings);
+  });
+
+  it("assigns tier-1 player to their primary position over an unrated player", () => {
+    // Player A has SS=1 (Primary). Player B has no positionRatings (unrated eligible).
+    // Over 6 innings, A should get SS at least as often as B.
+    const primary = makePlayer({
+      eligiblePositions: ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"],
+      positionRatings: { SS: 1 },
+    });
+    const unrated = makePlayer({
+      eligiblePositions: ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"],
+      positionRatings: {},
+    });
+    const rest = makeRoster(7);
+    const players = [primary, unrated, ...rest];
+    const result = buildAutoLineup(players, makeInnings(6), [], makeRules(), GAME_STUB);
+
+    const primarySS = inningsAtPosition(result.innings, primary.id, "SS");
+    const unratedSS = inningsAtPosition(result.innings, unrated.id, "SS");
+    expect(primarySS).toBeGreaterThanOrEqual(unratedSS);
+  });
+
+  it("fills all field slots when position ratings are set", () => {
+    // Mix of tier ratings across positions — all 9 field slots should be filled each inning.
+    const players = [
+      makePlayer({ positionRatings: { P: 1, SS: 2, CF: 3 } }),
+      makePlayer({ positionRatings: { C: 1, "1B": 2 } }),
+      makePlayer({ positionRatings: { "2B": 1, "3B": 1 } }),
+      makePlayer({ positionRatings: { LF: 1, RF: 2 } }),
+      makePlayer({ positionRatings: { SS: 1, "2B": 2 } }),
+      makePlayer({ positionRatings: { CF: 1, LF: 2, RF: 2 } }),
+      makePlayer({ positionRatings: { "1B": 1, "3B": 2 } }),
+      makePlayer({ positionRatings: { C: 2, P: 2 } }),
+      makePlayer({ positionRatings: { RF: 1, LF: 3 } }),
+    ];
+    const result = buildAutoLineup(players, makeInnings(6), [], makeRules(), GAME_STUB);
+    // Every field position in every inning should have a player assigned
+    const FIELD_POS = ["P", "C", "1B", "2B", "3B", "SS", "LF", "CF", "RF"];
+    for (const inn of result.innings) {
+      for (const pos of FIELD_POS) {
+        const slot = inn.slots.find((s) => s.position === pos);
+        expect(slot?.playerId).not.toBeNull();
+      }
+    }
+  });
+});
