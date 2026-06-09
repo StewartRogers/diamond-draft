@@ -6,12 +6,13 @@ import type {
   InningAssignment,
   PlayerGameOverride,
   Position,
+  FieldPosition,
 } from "./types";
 import { FIELD_POSITIONS } from "./types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function isFieldPosition(pos: Position): boolean {
+export function isFieldPosition(pos: Position): pos is FieldPosition {
   return (FIELD_POSITIONS as readonly string[]).includes(pos);
 }
 

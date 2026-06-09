@@ -22,7 +22,6 @@ import type {
   LeagueRules,
   GameStatus,
 } from "./types";
-import { FIELD_POSITIONS } from "./types";
 import {
   validateGame,
   consecutiveBenchInnings,
@@ -30,6 +29,7 @@ import {
   lastInningPitchedBefore,
   totalFieldInnings,
   totalInningsPitchedInGame,
+  isFieldPosition,
 } from "./rules";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -63,10 +63,6 @@ type PlayerState = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function isFieldPos(pos: Position): pos is FieldPosition {
-  return (FIELD_POSITIONS as readonly string[]).includes(pos);
-}
 
 function isPitchingPos(pos: Position): boolean {
   return pos === "P" || pos === "Bullpen - P";
@@ -288,14 +284,14 @@ function _solveOnce(
 
     // ── Categorise open slots ─────────────────────────────────────────────
     const openSlots = inning.slots.filter((s) => !s.locked);
-    const fieldSlots = openSlots.filter((s) => isFieldPos(s.position));
+    const fieldSlots = openSlots.filter((s) => isFieldPosition(s.position));
     const benchSlots = openSlots.filter((s) => isBenchPos(s.position));
     const bullpenSlots = openSlots.filter(
       (s) => s.position === "Bullpen - P" || s.position === "Bullpen - C"
     );
 
     const lockedFieldCount = inning.slots.filter(
-      (s) => s.locked && s.playerId != null && isFieldPos(s.position)
+      (s) => s.locked && s.playerId != null && isFieldPosition(s.position)
     ).length;
     const fieldSpotsNeeded = Math.min(
       fieldSlots.length,
@@ -312,7 +308,7 @@ function _solveOnce(
       // Hard: position eligibility
       if (
         rules.enforcePositionEligibility &&
-        isFieldPos(pos) &&
+        isFieldPosition(pos) &&
         !player.eligiblePositions.includes(pos)
       ) {
         return Infinity;
@@ -355,7 +351,7 @@ function _solveOnce(
       // ── Soft scoring (lower = more desirable) ────────────────────────────
       let s = 0;
 
-      if (isFieldPos(pos)) {
+      if (isFieldPosition(pos)) {
         // Position tier rating: prefer players rated higher at this position.
         // Tier 1 (Primary) = 0 penalty, Tier 2 (Secondary) = +40, Tier 3 (Can play) = +80,
         // Unrated = +60 (between Secondary and Can play — eligible but no preference set).

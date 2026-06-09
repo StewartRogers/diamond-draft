@@ -42,7 +42,11 @@ export async function PUT(request: Request) {
   return Response.json({ ok: true });
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
+  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  if (body?.confirm !== "wipe") {
+    return new Response("Missing confirmation: send { confirm: 'wipe' }", { status: 400 });
+  }
   clearAllData();
   return Response.json({ ok: true });
 }
