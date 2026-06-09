@@ -567,10 +567,16 @@ export const useDiamondDraftStore = create<
         game
       );
 
-      const warmupInnings = lineupLib.applyWarmupBullpen(result.innings);
+      // Do NOT run applyWarmupBullpen here. Warmup bullpen slots are set up
+      // (and locked) by setPitchCatchAssignment when the coach deliberately
+      // assigns a pitcher. By the time auto-fill runs, those locked slots are
+      // already present and the solver respects them. Running warmup again
+      // after auto-fill would move auto-filled pitchers to Bullpen-P in the
+      // preceding inning, clearing their field assignment there and producing
+      // TOO_FEW_FIELD_PLAYERS violations.
       const updated: Game = {
         ...game,
-        innings: warmupInnings,
+        innings: result.innings,
         updatedAt: new Date().toISOString(),
       };
       set((s) => {
@@ -579,7 +585,7 @@ export const useDiamondDraftStore = create<
       });
       await api.saveGame(updated);
       get().revalidate(gameId);
-      return { ...result, innings: warmupInnings };
+      return result;
     },
 
     autoFillInning: async (gameId, inning) => {

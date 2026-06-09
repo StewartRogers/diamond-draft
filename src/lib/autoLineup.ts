@@ -183,10 +183,15 @@ export function buildAutoLineup(
       (s) => s.position === "Bullpen - P" || s.position === "Bullpen - C"
     );
 
-    // How many field spots need filling
+    // How many field spots need filling.
+    // Only locked *field* slots count against maxFieldPlayers — bench and bullpen
+    // locks should not reduce the number of open field positions we fill.
+    const lockedFieldCount = inning.slots.filter(
+      (s) => s.locked && s.playerId != null && isFieldPos(s.position)
+    ).length;
     const fieldSpotsNeeded = Math.min(
       fieldSlots.length,
-      rules.maxFieldPlayers - lockedPlayerIds.size
+      rules.maxFieldPlayers - lockedFieldCount
     );
 
     // ── Score each (player, position) pair ────────────────────────────────

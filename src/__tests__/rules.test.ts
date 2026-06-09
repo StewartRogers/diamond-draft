@@ -433,14 +433,16 @@ describe("getComplianceSummary", () => {
   });
 
   it("counts warnings separately from errors", () => {
-    const players = makeRoster(9);
-    const innings = [buildFullInning(players)]; // only 1 inning → players get 1 field inning < min 2
+    // 2-inning game, one player sits bench both innings (0 field innings < min 2).
+    // That's a fair-play warning, not an error.
+    const players = makeRoster(10); // 10 players, 9 field slots → 1 on bench each inning
+    const inn1 = buildFullInning(players.slice(0, 9)); // first 9 on field, player[9] benched
+    const inn2 = { ...inn1, inning: 2 };              // same 9 on field again
+    const innings = [inn1, inn2];
     const game = makeGameWithInnings(innings, players);
-    const rules = makeRules({ minFieldInningsPerPlayer: 2, enforceFairPlayTime: true });
+    const rules = makeRules({ minFieldInningsPerPlayer: 2, enforceFairPlayTime: true, maxConsecutiveBench: 0 });
     const summary = getComplianceSummary(game, players, rules);
-    expect(summary.warningCount).toBeGreaterThan(0);
-    // Warnings don't make it invalid (only errors do)
-    // In this case there are no errors from the single-inning check
-    expect(summary.errorCount).toBe(0);
+    expect(summary.warningCount).toBeGreaterThan(0); // player[9] got 0 field innings
+    expect(summary.errorCount).toBe(0);              // warnings don't make it invalid
   });
 });

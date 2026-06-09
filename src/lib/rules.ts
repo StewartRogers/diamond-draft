@@ -89,11 +89,14 @@ function seasonInningsPitched(player: Player, currentGameId: string): number {
     .reduce((sum, entry) => sum + entry.innings, 0);
 }
 
-/** Count consecutive bench innings ending at (and including) the given inning. */
+/** Count consecutive bench innings ending at (and including) the given inning.
+ *  Stops counting at the first inning the player was not yet available (late arrival)
+ *  or is no longer available (early departure) — those innings don't count against them. */
 function consecutiveBenchInnings(
   playerId: string,
   innings: InningAssignment[],
-  upToInning: number
+  upToInning: number,
+  overrides: PlayerGameOverride[] = []
 ): number {
   const sorted = innings
     .filter((inn) => inn.inning <= upToInning)
@@ -101,6 +104,8 @@ function consecutiveBenchInnings(
 
   let count = 0;
   for (const inn of sorted) {
+    // Stop if the player wasn't available this inning — don't penalise absences
+    if (!isPlayerAvailableInInning(playerId, inn.inning, overrides)) break;
     const slot = inn.slots.find((s) => s.playerId === playerId);
     if (!slot || slot.position === "Bench") {
       count++;
@@ -333,7 +338,7 @@ export function validateInning(
 
     // ── Back-to-back bench ────────────────────────────────────────────────────
     if (slot.position === "Bench" && !isBullpen(slot.position)) {
-      const consecutive = consecutiveBenchInnings(playerId, allInnings, inning);
+      const consecutive = consecutiveBenchInnings(playerId, allInnings, inning, overrides);
       if (rules.maxConsecutiveBench > 0 && consecutive > rules.maxConsecutiveBench) {
         violations.push({
           code: "BACK_TO_BACK_BENCH",
@@ -397,7 +402,10 @@ export function validateGame(
       if (availableInnings.length === 0) continue;
 
       const fieldInnings = totalFieldInnings(player.id, availableInnings);
-      if (fieldInnings < rules.minFieldInningsPerPlayer) {
+      // Cap the minimum against how many innings the player was actually available —
+      // a player who leaves after inning 1 can't be expected to meet a 2-inning minimum.
+      const effectiveMin = Math.min(rules.minFieldInningsPerPlayer, availableInnings.length);
+      if (fieldInnings < effectiveMin) {
         violations.push({
           code: "INSUFFICIENT_FIELD_TIME",
           severity: "warning",
