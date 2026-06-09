@@ -301,6 +301,19 @@ function _solveOnce(
       // ── Soft scoring (lower = more desirable) ────────────────────────────
       let s = 0;
 
+      // Must-play priority: if this player has been benched the maximum
+      // consecutive innings allowed, they MUST get a field slot next. Give them
+      // a score so much lower than any other player that they win the competition
+      // for any field position, effectively turning this into a hard requirement
+      // without returning Infinity (which would block the position entirely).
+      if (
+        !isBenchPos(pos) &&
+        rules.maxConsecutiveBench > 0 &&
+        ps.consecutiveBench >= rules.maxConsecutiveBench
+      ) {
+        s -= 10000;
+      }
+
       // Fair play time — players with fewer field innings get priority
       const remaining = remainingInnings(
         player.id,
@@ -428,23 +441,72 @@ function _solveOnce(
 
     tryAssign(benchSlots.slice(0, unassignedPlayers.length), unassignedPlayers);
 
-    // Force-bench anyone still without a slot (back-to-back constraint couldn't be
-    // satisfied). Better to have a complete lineup with a logged warning than a
-    // silent gap that renders as an implicit BENCH and triggers false violations.
+    // Force-bench anyone still without a slot. If benching a player would
+    // violate back-to-back bench, first try swapping them into a field slot
+    // whose current occupant can safely bench instead. Only truly force-bench
+    // (with a warning) if no such swap is possible.
     const stillUnassigned = available.filter((p) => !assignedThisInning.has(p.id));
     for (const player of stillUnassigned) {
-      const slot: InningSlot = { position: "Bench", playerId: player.id };
-      inning.slots.push(slot);
-      assignedThisInning.add(player.id);
       const ps = state.get(player.id)!;
-      ps.benchInnings++;
-      ps.consecutiveBench++;
-      ps.positionsPlayed.add("Bench");
-      ps.lastPosition = "Bench";
-      warnings.push(
-        `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
-        `force-benched — not enough field spots to avoid back-to-back bench.`
-      );
+      const wouldViolateBench =
+        rules.maxConsecutiveBench > 0 &&
+        ps.consecutiveBench >= rules.maxConsecutiveBench;
+
+      let rescued = false;
+      if (wouldViolateBench) {
+        // Find a non-locked non-P non-C field slot whose occupant can bench safely
+        const rescueSlot = inning.slots.find((s) => {
+          if (!s.playerId || s.locked) return false;
+          if (!isFieldPos(s.position) || s.position === "P" || s.position === "C") return false;
+          if (
+            rules.enforcePositionEligibility &&
+            !player.eligiblePositions.includes(s.position)
+          ) return false;
+          const occupantPs = state.get(s.playerId)!;
+          // The occupant must be able to bench without a consecutive violation
+          return occupantPs.consecutiveBench < rules.maxConsecutiveBench;
+        });
+
+        if (rescueSlot) {
+          const occupantId = rescueSlot.playerId!;
+          const occupantPs = state.get(occupantId)!;
+
+          // Move the at-risk player into the field slot
+          rescueSlot.playerId = player.id;
+          assignedThisInning.add(player.id);
+          ps.fieldInnings++;
+          ps.consecutiveBench = 0;
+          ps.positionsPlayed.add(rescueSlot.position);
+          ps.lastPosition = rescueSlot.position;
+
+          // Move the occupant to a new bench slot instead
+          inning.slots.push({ position: "Bench", playerId: occupantId });
+          // Undo the occupant's field state contribution from this inning
+          occupantPs.fieldInnings--;
+          occupantPs.consecutiveBench++;
+          occupantPs.benchInnings++;
+          occupantPs.lastPosition = "Bench";
+          occupantPs.positionsPlayed.add("Bench");
+
+          rescued = true;
+        }
+      }
+
+      if (!rescued) {
+        const slot: InningSlot = { position: "Bench", playerId: player.id };
+        inning.slots.push(slot);
+        assignedThisInning.add(player.id);
+        ps.benchInnings++;
+        ps.consecutiveBench++;
+        ps.positionsPlayed.add("Bench");
+        ps.lastPosition = "Bench";
+        if (wouldViolateBench) {
+          warnings.push(
+            `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
+            `force-benched — no eligible swap partner to avoid back-to-back bench.`
+          );
+        }
+      }
     }
 
     log.push(
