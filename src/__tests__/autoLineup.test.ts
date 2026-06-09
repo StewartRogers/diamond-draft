@@ -371,3 +371,90 @@ describe("buildAutoLineup — edge cases", () => {
     }
   });
 });
+
+// ─── Defense-weighted bench scheduling ────────────────────────────────────────
+
+describe("buildAutoLineup — defense-weighted bench scheduling", () => {
+  /**
+   * Helper: for each inning, collect the total defenseRating of all benched players.
+   * Returns an array indexed by inning (0-based).
+   */
+  function benchDefenseByInning(
+    innings: InningAssignment[],
+    players: Player[]
+  ): number[] {
+    const pMap = new Map(players.map((p) => [p.id, p]));
+    return innings.map((inn) =>
+      inn.slots
+        .filter((s) => s.position === "Bench" && s.playerId !== null)
+        .reduce((sum, s) => sum + (pMap.get(s.playerId!)?.defenseRating ?? 2.5), 0)
+    );
+  }
+
+  it("benches higher-rated defenders in early innings vs later innings", () => {
+    // 11 players so there are always 2 on bench each inning (9 field spots).
+    // 4 players are Elite (4), 4 are Developing (1), 3 are Average (2).
+    const elites = makeRoster(4, { defenseRating: 4 });
+    const devs = makeRoster(4, { defenseRating: 1 });
+    const avgs = makeRoster(3, { defenseRating: 2 });
+    const players = [...elites, ...devs, ...avgs];
+    const rules = makeRules({ maxConsecutiveBench: 1, enforceFairPlayTime: true, minFieldInningsPerPlayer: 2 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    const byInning = benchDefenseByInning(result.innings, players);
+    // Sum of bench defense ratings in the first half should be >= second half
+    const earlySum = byInning.slice(0, 3).reduce((a, b) => a + b, 0);
+    const lateSum = byInning.slice(3).reduce((a, b) => a + b, 0);
+    expect(earlySum).toBeGreaterThanOrEqual(lateSum);
+  });
+
+  it("never benches all Elite defenders in the same inning", () => {
+    // 12 players: 3 Elite (tier 4), rest Average/Developing.
+    const elites = makeRoster(3, { defenseRating: 4 });
+    const others = makeRoster(9, { defenseRating: 2 });
+    const players = [...elites, ...others];
+    const rules = makeRules({ maxConsecutiveBench: 1, enforceFairPlayTime: true, minFieldInningsPerPlayer: 2 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    const eliteIds = new Set(elites.map((p) => p.id));
+    for (const inn of result.innings) {
+      const benchedElites = inn.slots.filter(
+        (s) => s.position === "Bench" && s.playerId !== null && eliteIds.has(s.playerId!)
+      ).length;
+      expect(benchedElites).toBeLessThan(elites.length);
+    }
+  });
+
+  it("never benches all Strong (tier 3) defenders in the same inning", () => {
+    const strong = makeRoster(2, { defenseRating: 3 });
+    const others = makeRoster(9, { defenseRating: 1 });
+    const players = [...strong, ...others];
+    const rules = makeRules({ maxConsecutiveBench: 1, enforceFairPlayTime: true, minFieldInningsPerPlayer: 2 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    const strongIds = new Set(strong.map((p) => p.id));
+    for (const inn of result.innings) {
+      const benchedStrong = inn.slots.filter(
+        (s) => s.position === "Bench" && s.playerId !== null && strongIds.has(s.playerId!)
+      ).length;
+      expect(benchedStrong).toBeLessThan(strong.length);
+    }
+  });
+
+  it("still satisfies consecutive-bench and fair-play constraints with defense ratings", () => {
+    const elites = makeRoster(4, { defenseRating: 4 });
+    const devs = makeRoster(7, { defenseRating: 1 });
+    const players = [...elites, ...devs];
+    const rules = makeRules({ maxConsecutiveBench: 1, enforceFairPlayTime: true, minFieldInningsPerPlayer: 3 });
+    const result = buildAutoLineup(players, makeInnings(6), [], rules, GAME_STUB);
+
+    // No consecutive bench violations
+    for (const p of players) {
+      expect(consecutiveBench(result.innings, p.id)).toBeLessThanOrEqual(1);
+    }
+    // Each player meets the minimum field innings
+    for (const p of players) {
+      expect(fieldInnings(result.innings, p.id)).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
