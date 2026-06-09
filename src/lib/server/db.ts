@@ -165,3 +165,43 @@ export function clearAllData(): void {
   const database = getDb();
   database.exec("DELETE FROM players; DELETE FROM games; DELETE FROM seasons; DELETE FROM settings;");
 }
+
+/**
+ * Atomically replace all data with a backup.
+ * The wipe and all writes happen inside a single SQLite transaction so a
+ * mid-restore failure never leaves the database in a partially-empty state.
+ */
+export function restoreBackup(backup: {
+  players: Player[];
+  games: Game[];
+  seasons: Season[];
+  settings: AppSettings;
+}): void {
+  const database = getDb();
+  const stmtPlayer = database.prepare("INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)");
+  const stmtGame = database.prepare("INSERT OR REPLACE INTO games (id, date, data) VALUES (?, ?, ?)");
+  const stmtSeason = database.prepare("INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)");
+  const stmtSettings = database.prepare("INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)");
+
+  database.transaction(() => {
+    database.exec("DELETE FROM players; DELETE FROM games; DELETE FROM seasons; DELETE FROM settings;");
+    for (const player of backup.players) {
+      if (player?.id && typeof player.id === "string") {
+        stmtPlayer.run(player.id, JSON.stringify(player));
+      }
+    }
+    for (const game of backup.games) {
+      if (game?.id && typeof game.id === "string" && game.date) {
+        stmtGame.run(game.id, game.date, JSON.stringify(game));
+      }
+    }
+    for (const season of backup.seasons) {
+      if (season?.id && typeof season.id === "string") {
+        stmtSeason.run(season.id, JSON.stringify(season));
+      }
+    }
+    if (backup.settings && typeof backup.settings === "object") {
+      stmtSettings.run(SETTINGS_KEY, JSON.stringify(backup.settings));
+    }
+  })();
+}

@@ -40,6 +40,8 @@ export function createPlayer(
     | "lastInitial"
     | "jerseyNumber"
     | "eligiblePositions"
+    | "positionRatings"
+    | "defenseRating"
     | "isGuest"
     | "pitchingLimitSeason"
     | "pitchingLimitGame"
