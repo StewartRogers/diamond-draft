@@ -46,6 +46,16 @@ export type PositionRating = 1 | 2 | 3;
  */
 export type DefenseRating = 1 | 2 | 3 | 4;
 
+export const DEFENSE_TIER_CFG: Record<
+  DefenseRating,
+  { label: string; bg: string; border: string; text: string }
+> = {
+  1: { label: "Developing", bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
+  2: { label: "Average",    bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  3: { label: "Strong",     bg: "#dcfce7", border: "#22c55e", text: "#166534" },
+  4: { label: "Elite",      bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+};
+
 export type Player = {
   id: string;
   firstName: string;
@@ -58,8 +68,8 @@ export type Player = {
    */
   positionRatings?: Partial<Record<FieldPosition, PositionRating>>;
   /**
-   * Overall defensive ability rating (1 = developing, 5 = elite).
-   * Used to break ties when auto-fill assigns field positions.
+   * Overall defensive ability rating (1 = developing, 4 = elite).
+   * Used to balance defensive strength across innings in auto-fill.
    */
   defenseRating?: DefenseRating;
   isGuest: boolean;

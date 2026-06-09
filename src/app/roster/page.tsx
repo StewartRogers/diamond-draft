@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Player } from "@/lib/types";
+import { DEFENSE_TIER_CFG } from "@/lib/types";
 import PlayerForm from "@/components/roster/PlayerForm";
 import { C, Jersey, ZChips, Pill, PageHeader } from "@/components/AppShell";
 
@@ -120,17 +121,13 @@ export default function RosterPage() {
                             </span>
                           )}
                           {player.defenseRating !== undefined && (() => {
-                            const cfg = {
-                              1: { label: "Developing", bg: "#f1f5f9", color: "#475569" },
-                              2: { label: "Average",    bg: "#dbeafe", color: "#1e40af" },
-                              3: { label: "Strong",     bg: "#dcfce7", color: "#166534" },
-                              4: { label: "Elite",      bg: "#fef3c7", color: "#92400e" },
-                            }[player.defenseRating];
+                            const cfg = DEFENSE_TIER_CFG[player.defenseRating as 1|2|3|4];
+                            if (!cfg) return null;
                             return (
                               <span
                                 className="dd-zchip"
                                 title={`Overall defense: ${cfg.label}`}
-                                style={{ background: cfg.bg, color: cfg.color, fontSize: 11 }}
+                                style={{ background: cfg.bg, color: cfg.text, fontSize: 11 }}
                               >
                                 {cfg.label}
                               </span>

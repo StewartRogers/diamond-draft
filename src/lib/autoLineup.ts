@@ -236,6 +236,11 @@ function _solveOnce(
 
   const totalInnings = existingInnings.length;
 
+  // Pre-compute season pitching innings per player (constant for this game run)
+  const seasonPitchMap = new Map(
+    players.map((p) => [p.id, seasonPitchingInnings(p, game.id)])
+  );
+
   // Build result innings, respecting locked slots
   const resultInnings: InningAssignment[] = existingInnings.map((inn) => ({
     ...inn,
@@ -324,7 +329,7 @@ function _solveOnce(
         if (ps.pitchInnings + 1 > gameLimit) return Infinity;
 
         if (player.pitchingLimitSeason > 0) {
-          const seasonTotal = seasonPitchingInnings(player, game.id);
+          const seasonTotal = seasonPitchMap.get(player.id) ?? 0;
           if (seasonTotal + ps.pitchInnings + 1 > player.pitchingLimitSeason)
             return Infinity;
         }
@@ -355,10 +360,9 @@ function _solveOnce(
         // Tier 1 (Primary) = 0 penalty, Tier 2 (Secondary) = +40, Tier 3 (Can play) = +80,
         // Unrated = +60 (between Secondary and Can play — eligible but no preference set).
         const tier = (player.positionRatings as Partial<Record<string, number>> | undefined)?.[pos];
-        if (tier === 1) s += 0;
-        else if (tier === 2) s += 40;
+        if (tier === 2) s += 40;
         else if (tier === 3) s += 80;
-        else s += 60; // eligible but unrated
+        else if (tier !== 1) s += 60; // eligible but unrated (tier 1 = 0 penalty)
 
         // Prefer players who have played fewer field innings (fairness)
         s += ps.fieldInnings * 30;
@@ -516,9 +520,21 @@ function _solveOnce(
       }
       selectedBench.push(candidate.player);
     }
-    // If bench isn't full yet, relax tier constraint using skipped candidates
+    // If bench isn't full yet, fill from skipped candidates (tier constraint
+    // relaxed — no other options remain). Emit a warning so the user knows.
     for (const candidate of skipped) {
       if (selectedBench.length >= benchCount) break;
+      const tier = candidate.player.defenseRating;
+      if (tier && tier >= 3) {
+        const avail = tierAvailableCount.get(tier) ?? 0;
+        const alreadyBenched = tierBenchedCount.get(tier) ?? 0;
+        if (alreadyBenched >= avail - 1) {
+          warnings.push(
+            `Inning ${inningNumber}: all defenseRating=${tier} defenders benched — no lower-rated players available.`
+          );
+        }
+        tierBenchedCount.set(tier, alreadyBenched + 1);
+      }
       selectedBench.push(candidate.player);
     }
 
@@ -544,20 +560,21 @@ function _solveOnce(
       (s) => s.position !== "P" && s.position !== "C"
     );
 
-    // Sort hardest-to-fill first (fewest eligible candidates)
-    const sortedOtherFieldSlots = [...otherFieldSlots].sort((a, b) => {
-      const aEligible = fieldCandidates.filter(
-        (p) =>
-          !rules.enforcePositionEligibility ||
-          p.eligiblePositions.includes(a.position)
-      ).length;
-      const bEligible = fieldCandidates.filter(
-        (p) =>
-          !rules.enforcePositionEligibility ||
-          p.eligiblePositions.includes(b.position)
-      ).length;
-      return aEligible - bEligible;
-    });
+    // Sort hardest-to-fill first (fewest eligible candidates).
+    // Pre-compute counts to avoid O(N·M·log N) filter calls inside the comparator.
+    const eligibleCountByPos = new Map(
+      otherFieldSlots.map((s) => [
+        s.position,
+        fieldCandidates.filter(
+          (p) =>
+            !rules.enforcePositionEligibility ||
+            p.eligiblePositions.includes(s.position)
+        ).length,
+      ])
+    );
+    const sortedOtherFieldSlots = [...otherFieldSlots].sort(
+      (a, b) => (eligibleCountByPos.get(a.position) ?? 0) - (eligibleCountByPos.get(b.position) ?? 0)
+    );
 
     tryAssign(sortedOtherFieldSlots.slice(0, remainingFieldSpotsNeeded), fieldCandidates);
     tryAssign(bullpenSlots, available);
