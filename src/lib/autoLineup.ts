@@ -20,8 +20,10 @@ import type {
   Position,
   FieldPosition,
   LeagueRules,
+  GameStatus,
 } from "./types";
 import { FIELD_POSITIONS } from "./types";
+import { validateGame } from "./rules";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,7 +134,11 @@ function remainingInnings(
 
 // ─── Solver ───────────────────────────────────────────────────────────────────
 
-export function buildAutoLineup(
+/**
+ * Internal single-pass solver. Separated so the public buildAutoLineup can
+ * run multiple attempts with different player orderings and pick the best.
+ */
+function _solveOnce(
   players: Player[],
   existingInnings: InningAssignment[],
   overrides: PlayerGameOverride[],
@@ -540,6 +546,71 @@ export function buildAutoLineup(
   }
 
   return { innings: resultInnings, log, feasible, warnings };
+}
+
+// ─── Public entry point: iterative solver ────────────────────────────────────
+
+/**
+ * Build a complete auto-lineup, retrying with different player orderings until
+ * no error-severity rule violations remain (or the attempt budget is exhausted).
+ *
+ * The greedy solver is deterministic for a given player order but can produce
+ * different — potentially violation-free — lineups when the order is varied.
+ * We shuffle the player array using a seeded rotation on each attempt so that
+ * every retry explores a meaningfully different search path.
+ *
+ * At most MAX_ATTEMPTS solves are run. The attempt with the fewest violations
+ * (preferring zero) is committed. If any attempt produces zero violations it is
+ * returned immediately.
+ */
+export function buildAutoLineup(
+  players: Player[],
+  existingInnings: InningAssignment[],
+  overrides: PlayerGameOverride[],
+  rules: LeagueRules,
+  game: Pick<Game, "id">
+): AutoLineupResult {
+  const MAX_ATTEMPTS = 12;
+
+  let bestResult: AutoLineupResult | null = null;
+  let bestErrorCount = Infinity;
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    // Rotate player array by `attempt` positions so each try has a different
+    // ordering — this is cheap, deterministic, and produces diverse schedules.
+    const rotatedPlayers =
+      attempt === 0
+        ? players
+        : [...players.slice(attempt % players.length), ...players.slice(0, attempt % players.length)];
+
+    const result = _solveOnce(rotatedPlayers, existingInnings, overrides, rules, game);
+
+    // Count error-severity violations against the full-game result
+    const tempGame: Game = {
+      id: game.id,
+      date: "",
+      pitchCatchAssignments: [],
+      innings: result.innings,
+      battingOrder: [],
+      playerOverrides: overrides,
+      rosterSnapshot: [],
+      status: "draft" as GameStatus,
+      createdAt: "",
+      updatedAt: "",
+    };
+    const violations = validateGame(tempGame, players, rules);
+    const errorCount = violations.filter((v) => v.severity === "error").length;
+
+    if (errorCount < bestErrorCount) {
+      bestErrorCount = errorCount;
+      bestResult = result;
+    }
+
+    // Zero violations — stop immediately
+    if (bestErrorCount === 0) break;
+  }
+
+  return bestResult!;
 }
 
 // ─── Single-inning fill ───────────────────────────────────────────────────────
