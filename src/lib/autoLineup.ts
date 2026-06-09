@@ -351,6 +351,15 @@ function _solveOnce(
       let s = 0;
 
       if (isFieldPos(pos)) {
+        // Position tier rating: prefer players rated higher at this position.
+        // Tier 1 (Primary) = 0 penalty, Tier 2 (Secondary) = +40, Tier 3 (Can play) = +80,
+        // Unrated = +60 (between Secondary and Can play — eligible but no preference set).
+        const tier = (player.positionRatings as Partial<Record<string, number>> | undefined)?.[pos];
+        if (tier === 1) s += 0;
+        else if (tier === 2) s += 40;
+        else if (tier === 3) s += 80;
+        else s += 60; // eligible but unrated
+
         // Prefer players who have played fewer field innings (fairness)
         s += ps.fieldInnings * 30;
         // Prefer position variety (don't always play the same spot)
