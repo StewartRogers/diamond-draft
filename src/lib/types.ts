@@ -28,12 +28,25 @@ export type PitchingLogEntry = {
   innings: number;
 };
 
+/**
+ * Skill tier for a field position.
+ *   1 = Primary   — best at this position, first choice
+ *   2 = Secondary — comfortable, second choice
+ *   3 = Tertiary  — can play, last resort
+ */
+export type PositionRating = 1 | 2 | 3;
+
 export type Player = {
   id: string;
   firstName: string;
   lastInitial: string;
   jerseyNumber: string;
   eligiblePositions: Position[];
+  /**
+   * Optional per-position skill tier for field positions only.
+   * A position can be eligible without a rating (unrated = no preference set).
+   */
+  positionRatings?: Partial<Record<FieldPosition, PositionRating>>;
   isGuest: boolean;
   /** Season-level pitching limit (innings). 0 = no limit. */
   pitchingLimitSeason: number;

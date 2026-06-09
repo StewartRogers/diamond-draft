@@ -1,8 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { Player, Position } from "@/lib/types";
-import { ALL_POSITIONS, FIELD_POSITIONS } from "@/lib/types";
+import type { Player, Position, FieldPosition, PositionRating } from "@/lib/types";
+import { FIELD_POSITIONS, ALL_POSITIONS } from "@/lib/types";
+
+// Tier display config — used in both the cycling buttons and the legend
+const TIER_CFG = {
+  1: { label: "Primary",   bg: "#fef3c7", border: "#f59e0b", text: "#92400e", sup: "¹" },
+  2: { label: "Secondary", bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", sup: "²" },
+  3: { label: "Can play",  bg: "#dcfce7", border: "#22c55e", text: "#166534", sup: "³" },
+} as const;
+
+const FIELD_POS_SET = new Set<string>(FIELD_POSITIONS);
 
 type Props = {
   initial?: Player;
@@ -11,6 +20,7 @@ type Props = {
     lastInitial: string;
     jerseyNumber: string;
     eligiblePositions: Position[];
+    positionRatings: Partial<Record<FieldPosition, PositionRating>>;
     isGuest: boolean;
     pitchingLimitGame: number;
     pitchingLimitSeason: number;
@@ -25,6 +35,9 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
   const [eligiblePositions, setEligiblePositions] = useState<Position[]>(
     initial?.eligiblePositions ?? [...FIELD_POSITIONS]
   );
+  const [positionRatings, setPositionRatings] = useState<Partial<Record<FieldPosition, PositionRating>>>(
+    initial?.positionRatings ?? {}
+  );
   const [isGuest, setIsGuest] = useState(initial?.isGuest ?? false);
   const [pitchingLimitGame, setPitchingLimitGame] = useState(
     initial?.pitchingLimitGame ?? 3
@@ -33,7 +46,34 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
     initial?.pitchingLimitSeason ?? 0
   );
 
-  function togglePosition(pos: Position) {
+  // Field positions cycle: Off → Tier 1 → Tier 2 → Tier 3 → Off
+  function cycleFieldPosition(pos: FieldPosition) {
+    const currentRating = positionRatings[pos];
+    const isEligible = eligiblePositions.includes(pos);
+
+    if (!isEligible) {
+      // Off → Tier 1
+      setEligiblePositions((prev) => [...prev, pos]);
+      setPositionRatings((prev) => ({ ...prev, [pos]: 1 as PositionRating }));
+    } else if (currentRating === 1) {
+      // Tier 1 → Tier 2
+      setPositionRatings((prev) => ({ ...prev, [pos]: 2 as PositionRating }));
+    } else if (currentRating === 2) {
+      // Tier 2 → Tier 3
+      setPositionRatings((prev) => ({ ...prev, [pos]: 3 as PositionRating }));
+    } else {
+      // Tier 3 (or rated but missing rating edge case) → Off
+      setEligiblePositions((prev) => prev.filter((p) => p !== pos));
+      setPositionRatings((prev) => {
+        const next = { ...prev };
+        delete next[pos];
+        return next;
+      });
+    }
+  }
+
+  // Non-field positions (Bench, Bullpen) remain simple toggles
+  function toggleNonFieldPosition(pos: Position) {
     setEligiblePositions((prev) =>
       prev.includes(pos) ? prev.filter((p) => p !== pos) : [...prev, pos]
     );
@@ -47,6 +87,7 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
       lastInitial: lastInitial.trim().charAt(0).toUpperCase(),
       jerseyNumber: jerseyNumber.trim(),
       eligiblePositions,
+      positionRatings,
       isGuest,
       pitchingLimitGame,
       pitchingLimitSeason,
@@ -112,17 +153,74 @@ export default function PlayerForm({ initial, onSave, onCancel }: Props) {
         </div>
       </div>
 
-      {/* Eligible positions */}
+      {/* Field positions with tier ratings */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="block text-xs font-medium text-slate-400">
+            Field Positions &amp; Skill Tier
+          </label>
+          <span className="text-xs text-slate-500">click to set tier · click again to cycle · 4th click removes</span>
+        </div>
+
+        {/* Tier legend */}
+        <div className="flex gap-3 mb-3">
+          {([1, 2, 3] as PositionRating[]).map((tier) => {
+            const cfg = TIER_CFG[tier];
+            return (
+              <span
+                key={tier}
+                className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border"
+                style={{ background: cfg.bg, borderColor: cfg.border, color: cfg.text }}
+              >
+                <sup style={{ fontSize: "0.65em", fontWeight: 700 }}>{cfg.sup}</sup>
+                {cfg.label}
+              </span>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {FIELD_POSITIONS.map((pos) => {
+            const isEligible = eligiblePositions.includes(pos);
+            const tier = isEligible ? (positionRatings[pos] ?? null) : null;
+            const cfg = tier ? TIER_CFG[tier] : null;
+
+            return (
+              <button
+                key={pos}
+                type="button"
+                onClick={() => cycleFieldPosition(pos)}
+                title={tier ? `${pos} — ${TIER_CFG[tier].label} (click to advance tier)` : `${pos} — click to add`}
+                className="px-3 py-1 rounded-full text-xs font-semibold border transition-colors"
+                style={
+                  cfg
+                    ? { background: cfg.bg, borderColor: cfg.border, color: cfg.text }
+                    : { background: "#1e293b", borderColor: "#475569", color: "#94a3b8" }
+                }
+              >
+                {pos}
+                {tier && (
+                  <sup style={{ fontSize: "0.65em", marginLeft: 2, fontWeight: 700 }}>
+                    {TIER_CFG[tier].sup}
+                  </sup>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Non-field positions (Bench, Bullpen) — simple toggles */}
       <div>
         <label className="block text-xs font-medium text-slate-400 mb-2">
-          Eligible Positions
+          Special Positions
         </label>
         <div className="flex flex-wrap gap-2">
-          {ALL_POSITIONS.map((pos) => (
+          {ALL_POSITIONS.filter((pos) => !FIELD_POS_SET.has(pos)).map((pos) => (
             <button
               key={pos}
               type="button"
-              onClick={() => togglePosition(pos)}
+              onClick={() => toggleNonFieldPosition(pos)}
               className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                 eligiblePositions.includes(pos)
                   ? "bg-blue-600 border-blue-500 text-white"

@@ -121,7 +121,7 @@ export default function RosterPage() {
                           )}
                         </div>
                       </td>
-                      <td><ZChips positions={player.eligiblePositions} /></td>
+                      <td><ZChips positions={player.eligiblePositions} ratings={player.positionRatings} /></td>
                       <td>
                         <span
                           style={{
