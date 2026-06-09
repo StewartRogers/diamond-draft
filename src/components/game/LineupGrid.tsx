@@ -357,13 +357,13 @@ export default function LineupGrid({ game, players, violations }: Props) {
         <table className="min-w-full text-sm border-collapse">
           <thead>
             <tr className="bg-slate-800">
-              <th className="sticky left-0 z-10 bg-slate-800 px-4 py-3 text-left text-xs font-semibold text-slate-400 w-32 border-r border-slate-700">
+              <th className="sticky left-0 z-10 bg-slate-800 px-3 py-3 text-left text-xs font-semibold text-slate-400 w-28 border-r border-slate-700">
                 Player
               </th>
               {game.innings.map((inn) => (
                 <th
                   key={inn.inning}
-                  className="px-3 py-3 text-center text-xs font-semibold text-slate-400 min-w-[80px] border-r border-slate-700 last:border-0"
+                  className="px-2 py-3 text-center text-xs font-semibold text-slate-400 min-w-[64px] border-r border-slate-700"
                 >
                   <div>Inn {inn.inning}</div>
                   {game.status !== "finalized" && (
@@ -377,6 +377,13 @@ export default function LineupGrid({ game, players, violations }: Props) {
                   )}
                 </th>
               ))}
+              {/* Bench count column */}
+              <th
+                className="px-2 py-3 text-center text-xs font-semibold text-slate-400 w-10"
+                title="Total bench innings"
+              >
+                🪑
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -391,6 +398,11 @@ export default function LineupGrid({ game, players, violations }: Props) {
               );
               const hasError = playerViolations.some((v) => v.severity === "error");
               const hasWarning = playerViolations.some((v) => v.severity === "warning");
+
+              const benchCount = game.innings.reduce((n, inn) => {
+                const slot = inn.slots.find((s) => s.playerId === player.id);
+                return n + (slot?.position === "Bench" ? 1 : 0);
+              }, 0);
 
               return (
                 <tr
@@ -446,13 +458,13 @@ export default function LineupGrid({ game, players, violations }: Props) {
                     return (
                       <td
                         key={inn.inning}
-                        className={`px-2 py-2 text-center border-r border-slate-800 last:border-0 ${
+                        className={`px-1 py-2 text-center border-r border-slate-800 ${
                           cellError ? "ring-1 ring-inset ring-red-500" : ""
                         }`}
                       >
                         {slot ? (
                           <span
-                            className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${posColor(
+                            className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${posColor(
                               slot.position
                             )} ${slot.locked ? "ring-1 ring-white/30" : ""}`}
                             title={cellViolations.map((v) => v.message).join("\n")}
@@ -465,6 +477,24 @@ export default function LineupGrid({ game, players, violations }: Props) {
                       </td>
                     );
                   })}
+
+                  {/* Bench count cell */}
+                  <td className="px-2 py-2 text-center">
+                    <span
+                      className={`text-xs font-bold tabular-nums ${
+                        benchCount === 0
+                          ? "text-slate-600"
+                          : benchCount >= 3
+                          ? "text-red-400"
+                          : benchCount >= 2
+                          ? "text-yellow-400"
+                          : "text-slate-300"
+                      }`}
+                      title={`${benchCount} bench inning${benchCount !== 1 ? "s" : ""}`}
+                    >
+                      {benchCount}
+                    </span>
+                  </td>
                 </tr>
               );
             })}
