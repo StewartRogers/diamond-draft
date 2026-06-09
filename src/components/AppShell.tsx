@@ -56,15 +56,24 @@ export function Jersey({ num, size = 28 }: { num: string; size?: number }) {
   );
 }
 
-export function ZChips({ positions }: { positions: string[] }) {
+const TIER_SUP: Record<1 | 2 | 3, string> = { 1: "¹", 2: "²", 3: "³" };
+
+export function ZChips({
+  positions,
+  ratings,
+}: {
+  positions: string[];
+  ratings?: Partial<Record<string, 1 | 2 | 3>>;
+}) {
   const fieldOnly = positions.filter((p) => ZONE[p]);
   return (
     <span style={{ display: "inline-flex", gap: 5, flexWrap: "wrap" }}>
       {fieldOnly.map((p) => {
         const z = ZONE_PAL[ZONE[p]];
+        const tier = ratings?.[p];
         return (
           <span key={p} className="dd-zchip" style={{ background: z.bg, color: z.fg }}>
-            {p}
+            {p}{tier && <sup style={{ fontSize: "0.7em", marginLeft: 1, opacity: 0.8 }}>{TIER_SUP[tier]}</sup>}
           </span>
         );
       })}

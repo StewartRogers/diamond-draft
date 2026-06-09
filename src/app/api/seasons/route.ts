@@ -9,6 +9,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const season = (await request.json()) as Season;
+  if (!season?.id || typeof season.id !== "string") {
+    return new Response("Invalid season: missing id", { status: 400 });
+  }
   saveSeason(season);
   return Response.json(season, { status: 201 });
 }

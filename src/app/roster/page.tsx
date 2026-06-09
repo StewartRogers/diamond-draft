@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Player } from "@/lib/types";
+import { DEFENSE_TIER_CFG } from "@/lib/types";
 import PlayerForm from "@/components/roster/PlayerForm";
 import { C, Jersey, ZChips, Pill, PageHeader } from "@/components/AppShell";
 
@@ -110,7 +111,7 @@ export default function RosterPage() {
                     <tr style={{ cursor: "pointer" }}>
                       <td><Jersey num={player.jerseyNumber} /></td>
                       <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 15, fontWeight: 700 }}>
                             {player.firstName} {player.lastInitial}.
                           </span>
@@ -119,9 +120,22 @@ export default function RosterPage() {
                               GUEST
                             </span>
                           )}
+                          {player.defenseRating !== undefined && (() => {
+                            const cfg = DEFENSE_TIER_CFG[player.defenseRating as 1|2|3|4];
+                            if (!cfg) return null;
+                            return (
+                              <span
+                                className="dd-zchip"
+                                title={`Overall defense: ${cfg.label}`}
+                                style={{ background: cfg.bg, color: cfg.text, fontSize: 11 }}
+                              >
+                                {cfg.label}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </td>
-                      <td><ZChips positions={player.eligiblePositions} /></td>
+                      <td><ZChips positions={player.eligiblePositions} ratings={player.positionRatings} /></td>
                       <td>
                         <span
                           style={{

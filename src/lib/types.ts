@@ -28,12 +28,50 @@ export type PitchingLogEntry = {
   innings: number;
 };
 
+/**
+ * Skill tier for a field position.
+ *   1 = Primary   — best at this position, first choice
+ *   2 = Secondary — comfortable, second choice
+ *   3 = Tertiary  — can play, last resort
+ */
+export type PositionRating = 1 | 2 | 3;
+
+/**
+ * Overall defensive ability on a 1–4 scale (4 = strongest defender).
+ *   1 = Developing  — learning the game
+ *   2 = Average     — holds their own
+ *   3 = Strong      — above average, reliable
+ *   4 = Elite       — best defensive player
+ * Used to balance defensive strength across the lineup in auto-fill.
+ */
+export type DefenseRating = 1 | 2 | 3 | 4;
+
+export const DEFENSE_TIER_CFG: Record<
+  DefenseRating,
+  { label: string; bg: string; border: string; text: string }
+> = {
+  1: { label: "Developing", bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
+  2: { label: "Average",    bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  3: { label: "Strong",     bg: "#dcfce7", border: "#22c55e", text: "#166534" },
+  4: { label: "Elite",      bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+};
+
 export type Player = {
   id: string;
   firstName: string;
   lastInitial: string;
   jerseyNumber: string;
   eligiblePositions: Position[];
+  /**
+   * Optional per-position skill tier for field positions only.
+   * A position can be eligible without a rating (unrated = no preference set).
+   */
+  positionRatings?: Partial<Record<FieldPosition, PositionRating>>;
+  /**
+   * Overall defensive ability rating (1 = developing, 4 = elite).
+   * Used to balance defensive strength across innings in auto-fill.
+   */
+  defenseRating?: DefenseRating;
   isGuest: boolean;
   /** Season-level pitching limit (innings). 0 = no limit. */
   pitchingLimitSeason: number;
