@@ -217,10 +217,11 @@ export function buildStateFromInnings(
  * Internal single-pass solver. Separated so the public buildAutoLineup can
  * run multiple attempts with different player orderings and pick the best.
  *
- * Uses a bench-first strategy:
- *   1. Decide who sits on bench (excluding players at their consecutive-bench limit).
- *   2. Fill field positions from the remaining (non-bench) players.
- * This guarantees that players who cannot sit again always receive a field slot.
+ * Uses a three-phase strategy per inning:
+ *   1. Assign pitcher (P) and catcher (C) — most constrained positions first.
+ *   2. Bench-first: select who sits from the remaining players, excluding anyone
+ *      at the consecutive-bench limit (they are guaranteed a field slot).
+ *   3. Fill the remaining field positions from non-bench candidates.
  */
 function _solveOnce(
   players: Player[],
@@ -405,27 +406,43 @@ function _solveOnce(
       }
     };
 
-    // ── PHASE 1: Bench-first selection ────────────────────────────────────
-    // Decide who sits BEFORE filling field positions. This guarantees that
-    // players who have already hit the consecutive-bench limit are never
-    // selected for bench — they are excluded here and will always end up in
-    // the field-candidate pool.
+    // ── PHASE 1: Assign pitcher (P) and catcher (C) first ────────────────
+    // P and C are the most constrained positions (pitch limits, no-pitch-
+    // after-catching). Locking them in first ensures that bench selection
+    // never inadvertently benches the only eligible pitcher or catcher.
+    // P is sorted before C because pitching constraints are stricter.
+    const pitchCatchSlots = fieldSlots
+      .filter((s) => s.position === "P" || s.position === "C")
+      .sort((a) => (a.position === "P" ? -1 : 1));
+
+    tryAssign(pitchCatchSlots.slice(0, fieldSpotsNeeded), available);
+
+    const filledPCCount = pitchCatchSlots.filter((s) => s.playerId !== null).length;
+    const remainingFieldSpotsNeeded = Math.max(0, fieldSpotsNeeded - filledPCCount);
+
+    // Players still available after P/C assignment
+    const postPCAvailable = available.filter((p) => !assignedThisInning.has(p.id));
+
+    // ── PHASE 2: Bench-first selection from remaining players ─────────────
+    // Decide who sits BEFORE filling the remaining field positions. This
+    // guarantees that players at the consecutive-bench limit are excluded
+    // from bench selection and always receive a field slot.
     //
     // Bench score (higher = more likely to sit):
     //   +100 per field inning already played  → bench those who've played most
     //   -10  per consecutive bench inning     → avoid re-benching recent sitters
-    // Players who cannot afford to sit (would miss the minimum field innings
+    // Players who cannot afford to sit (would miss the minimum-field-innings
     // guarantee given remaining innings) are filtered out entirely.
 
     const benchCount = Math.max(
       0,
-      available.length - fieldSpotsNeeded - bullpenSlots.length
+      postPCAvailable.length - remainingFieldSpotsNeeded - bullpenSlots.length
     );
 
-    // Players who MUST get a field slot this inning (hit consecutive-bench limit)
+    // Players who MUST get a field slot (hit the consecutive-bench limit)
     const mustFieldIds = new Set<string>(
       rules.maxConsecutiveBench > 0
-        ? available
+        ? postPCAvailable
             .filter(
               (p) => state.get(p.id)!.consecutiveBench >= rules.maxConsecutiveBench
             )
@@ -434,12 +451,10 @@ function _solveOnce(
     );
 
     // Bench candidates: everyone NOT at the consecutive-bench limit.
-    // Score and sort descending so the most-deserving sitters come first.
-    const benchCandidates = available
+    const benchCandidates = postPCAvailable
       .filter((p) => !mustFieldIds.has(p.id))
       .map((p) => {
         const ps = state.get(p.id)!;
-        // Protect players who need field time and have too few innings left
         if (rules.enforceFairPlayTime) {
           const remaining = remainingInnings(p.id, inningNumber + 1, totalInnings, overrides);
           const fieldDeficit = rules.minFieldInningsPerPlayer - ps.fieldInnings;
@@ -457,7 +472,7 @@ function _solveOnce(
 
     const selectedBench = benchCandidates.slice(0, benchCount).map((x) => x.player);
 
-    // Ensure enough bench slots exist (using the same object reference so that
+    // Ensure enough bench slots exist (share the same object reference so the
     // direct assignment below propagates into inning.slots)
     while (benchSlots.length < selectedBench.length) {
       const newSlot: InningSlot = { position: "Bench", playerId: null };
@@ -470,13 +485,17 @@ function _solveOnce(
       assignedThisInning.add(selectedBench[i].id);
     }
 
-    // ── PHASE 2: Fill field and bullpen from remaining players ────────────
-    const fieldCandidates = available.filter(
+    // ── PHASE 3: Fill remaining field positions ───────────────────────────
+    const fieldCandidates = postPCAvailable.filter(
       (p) => !assignedThisInning.has(p.id)
     );
 
-    // Sort field slots hardest-to-fill first (fewest eligible candidates)
-    const sortedFieldSlots = [...fieldSlots].sort((a, b) => {
+    const otherFieldSlots = fieldSlots.filter(
+      (s) => s.position !== "P" && s.position !== "C"
+    );
+
+    // Sort hardest-to-fill first (fewest eligible candidates)
+    const sortedOtherFieldSlots = [...otherFieldSlots].sort((a, b) => {
       const aEligible = fieldCandidates.filter(
         (p) =>
           !rules.enforcePositionEligibility ||
@@ -490,7 +509,7 @@ function _solveOnce(
       return aEligible - bEligible;
     });
 
-    tryAssign(sortedFieldSlots.slice(0, fieldSpotsNeeded), fieldCandidates);
+    tryAssign(sortedOtherFieldSlots.slice(0, remainingFieldSpotsNeeded), fieldCandidates);
     tryAssign(bullpenSlots, available);
 
     // Force-bench any players still without a slot. This should only happen
