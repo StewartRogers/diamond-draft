@@ -181,7 +181,9 @@ export type ViolationCode =
   | "MISSING_POSITION"
   | "TOO_FEW_FIELD_PLAYERS"
   | "TOO_MANY_FIELD_PLAYERS"
-  | "PITCHING_AFTER_CATCHING";
+  | "PITCHING_AFTER_CATCHING"
+  | "PITCHER_RETURNED_AFTER_REMOVAL"
+  | "UNBALANCED_FIELD_TIME";
 
 export type RuleViolation = {
   code: ViolationCode;

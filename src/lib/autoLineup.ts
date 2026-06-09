@@ -51,6 +51,8 @@ type PlayerState = {
   lastPosition: Position | null;
   /** The inning number when the player last pitched (or null). */
   lastPitchInning: number | null;
+  /** The inning number of the player's most recent *actual* P assignment (not Bullpen-P). */
+  lastActualPitchInning: number | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -155,6 +157,7 @@ export function buildAutoLineup(
       positionsPlayed: new Set(),
       lastPosition: null,
       lastPitchInning: null,
+      lastActualPitchInning: null,
     });
   }
 
@@ -197,6 +200,7 @@ export function buildAutoLineup(
           }
           if (isPitchingPos(slot.position)) ps.pitchInnings++;
           if (isPitchingPos(slot.position)) ps.lastPitchInning = inningNumber;
+          if (slot.position === "P") ps.lastActualPitchInning = inningNumber;
           ps.positionsPlayed.add(slot.position);
           ps.lastPosition = slot.position;
         }
@@ -263,6 +267,17 @@ export function buildAutoLineup(
         if (rules.enforceNoPitchingAfterCatching) {
           const caughtBefore = [...ps.positionsPlayed].some(isCatchingPos);
           if (caughtBefore) return Infinity;
+        }
+
+        // Hard: RULE_009 — once removed from the actual pitcher (P) role,
+        // a player cannot return to P. "Removed" means there was at least one
+        // inning gap (not occupied by Bullpen-P warmup) since the last P slot.
+        if (pos === "P" && ps.lastActualPitchInning != null) {
+          // Use lastPitchInning (which includes Bullpen-P) so that an
+          // inning-N-1 warmup before inning-N pitching doesn't look like a gap.
+          const referenceInning = ps.lastPitchInning ?? ps.lastActualPitchInning;
+          const gap = inningNumber - referenceInning - 1;
+          if (gap > 0) return Infinity;
         }
 
         // Hard: enforce pitching rest between appearances
@@ -384,6 +399,7 @@ export function buildAutoLineup(
           ps.pitchInnings++;
           ps.lastPitchInning = inningNumber;
         }
+        if (slot.position === "P") ps.lastActualPitchInning = inningNumber;
         ps.positionsPlayed.add(slot.position);
         ps.lastPosition = slot.position;
       }

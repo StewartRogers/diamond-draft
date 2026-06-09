@@ -116,6 +116,28 @@ function consecutiveBenchInnings(
   return count;
 }
 
+/**
+ * Returns the last inning number ( < beforeInning) when the player was the
+ * *actual* pitcher (P position only — excludes Bullpen warm-up).
+ * Used by RULE_009 to detect removal from the pitcher role.
+ */
+function lastActualPitchingInningBefore(
+  playerId: string,
+  innings: InningAssignment[],
+  beforeInning: number
+): number | null {
+  const filtered = innings
+    .filter((inn) => inn.inning < beforeInning)
+    .sort((a, b) => b.inning - a.inning);
+  for (const inn of filtered) {
+    const slot = inn.slots.find(
+      (s) => s.playerId === playerId && s.position === "P"
+    );
+    if (slot) return inn.inning;
+  }
+  return null;
+}
+
 /** Returns the last inning number ( < beforeInning) when the player pitched, or null. */
 function lastInningPitchedBefore(
   playerId: string,
@@ -336,6 +358,31 @@ export function validateInning(
       }
     }
 
+    // ── RULE_009: once removed from pitcher, may not return ──────────────────
+    // A player is "removed" when they were the actual pitcher (P) in some
+    // prior inning AND there is a subsequent inning (before the current one)
+    // where they were available but NOT in any pitching role (P or Bullpen-P).
+    // Bullpen-P counts as pitching activity so a warmup → pitch pattern is
+    // treated as a continuous stint, not a removal.
+    if (slot.position === "P") {
+      const lastActual = lastActualPitchingInningBefore(playerId, allInnings, inning);
+      if (lastActual != null) {
+        // lastAnyPitching is the most recent P or Bullpen-P before this inning
+        const lastAnyPitching = lastInningPitchedBefore(playerId, allInnings, inning);
+        const referenceInning = lastAnyPitching ?? lastActual;
+        if (inning - referenceInning - 1 > 0) {
+          violations.push({
+            code: "PITCHER_RETURNED_AFTER_REMOVAL",
+            severity: "error",
+            message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. was removed from the pitcher role and may not return.`,
+            playerId,
+            inning,
+            position: slot.position,
+          });
+        }
+      }
+    }
+
     // ── Back-to-back bench ────────────────────────────────────────────────────
     if (slot.position === "Bench" && !isBullpen(slot.position)) {
       const consecutive = consecutiveBenchInnings(playerId, allInnings, inning, overrides);
@@ -411,6 +458,37 @@ export function validateGame(
           severity: "warning",
           message: `${player.firstName} ${player.lastInitial}. only has ${fieldInnings} field inning(s) (minimum ${rules.minFieldInningsPerPlayer}).`,
           playerId: player.id,
+        });
+      }
+    }
+  }
+
+  // ── RULE_010: field innings balanced among fully-available players ─────────
+  // "Fully available" means no override at all (not late, not leaving early,
+  // not absent). Players with availability restrictions may legitimately have
+  // fewer field innings, so they are excluded from the balance check.
+  if (rules.enforceFairPlayTime) {
+    const fullyAvailable = players.filter(
+      (p) => getOverride(p.id, game.playerOverrides) == null
+    );
+    if (fullyAvailable.length > 1) {
+      const fieldCounts = fullyAvailable.map((p) =>
+        totalFieldInnings(p.id, game.innings)
+      );
+      const maxCount = Math.max(...fieldCounts);
+      const minCount = Math.min(...fieldCounts);
+      if (maxCount - minCount > 1) {
+        // Flag players who are 2+ innings below the maximum — they are
+        // the under-served players that a coach should correct.
+        fullyAvailable.forEach((player, idx) => {
+          if (fieldCounts[idx] < maxCount - 1) {
+            violations.push({
+              code: "UNBALANCED_FIELD_TIME",
+              severity: "warning",
+              message: `${player.firstName} ${player.lastInitial}. has ${fieldCounts[idx]} field inning(s) vs ${maxCount} maximum — difference exceeds 1 (RULE_010).`,
+              playerId: player.id,
+            });
+          }
         });
       }
     }
