@@ -20,12 +20,14 @@ function isBullpen(pos: Position): boolean {
   return pos === "Bullpen - P" || pos === "Bullpen - C";
 }
 
+// Bullpen slots are warm-up (sitting), not innings pitched/caught — they do
+// not count toward pitch limits, rest, RULE_009, or pitch-after-catch.
 function isPitchingPosition(pos: Position): boolean {
-  return pos === "P" || pos === "Bullpen - P";
+  return pos === "P";
 }
 
 function isCatchingPosition(pos: Position): boolean {
-  return pos === "C" || pos === "Bullpen - C";
+  return pos === "C";
 }
 
 /** Returns the player's override for this game, or null. */
@@ -108,7 +110,7 @@ export function consecutiveBenchInnings(
     // Stop if the player wasn't available this inning — don't penalise absences
     if (!isPlayerAvailableInInning(playerId, inn.inning, overrides)) break;
     const slot = inn.slots.find((s) => s.playerId === playerId);
-    if (!slot || slot.position === "Bench") {
+    if (!slot || slot.position === "Bench" || isBullpen(slot.position)) {
       count++;
     } else {
       break;
@@ -385,7 +387,7 @@ export function validateInning(
     }
 
     // ── Back-to-back bench ────────────────────────────────────────────────────
-    if (slot.position === "Bench" && !isBullpen(slot.position)) {
+    if (slot.position === "Bench" || isBullpen(slot.position)) {
       const consecutive = consecutiveBenchInnings(playerId, allInnings, inning, overrides);
       if (rules.maxConsecutiveBench > 0 && consecutive > rules.maxConsecutiveBench) {
         violations.push({
@@ -394,6 +396,26 @@ export function validateInning(
           message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. has been on bench ${consecutive} inning(s) in a row (max ${rules.maxConsecutiveBench}).`,
           playerId,
           inning,
+        });
+      }
+    }
+
+    // ── Bullpen is warm-up only ──────────────────────────────────────────────
+    // A player belongs in Bullpen-P/C in inning N only if they play that role
+    // (P or C) in inning N+1.
+    if (isBullpen(slot.position)) {
+      const role = slot.position === "Bullpen - P" ? "P" : "C";
+      const next = allInnings.find((i) => i.inning === inning + 1);
+      const playsRoleNext =
+        next?.slots.some((s) => s.playerId === playerId && s.position === role) ?? false;
+      if (!playsRoleNext) {
+        violations.push({
+          code: "BULLPEN_NOT_WARMUP",
+          severity: "warning",
+          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. is in ${slot.position} but is not ${role === "P" ? "pitching" : "catching"} in inning ${inning + 1}.`,
+          playerId,
+          inning,
+          position: slot.position,
         });
       }
     }

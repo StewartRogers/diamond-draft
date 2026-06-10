@@ -92,11 +92,12 @@ describe("buildAutoLineup — basic feasibility", () => {
     expect(result.innings).toHaveLength(4);
   });
 
-  it("logs one entry per inning", () => {
+  it("logs a header entry per inning", () => {
     const players = makeRoster(9);
     const innings = makeInnings(3);
     const result = buildAutoLineup(players, innings, [], makeRules(), GAME_STUB);
-    expect(result.log).toHaveLength(3);
+    const inningHeaders = result.log.filter((l) => l.startsWith("── Inning"));
+    expect(inningHeaders).toHaveLength(3);
   });
 });
 
@@ -147,12 +148,9 @@ describe("buildAutoLineup — pitching rest", () => {
 
     for (const p of players) {
       const pitchingInnings: number[] = [];
+      // Bullpen-P is warm-up (sitting), not an inning pitched — only count P.
       result.innings.forEach((inn) => {
-        if (
-          inn.slots.some(
-            (s) => s.playerId === p.id && (s.position === "P" || s.position === "Bullpen - P")
-          )
-        ) {
+        if (inn.slots.some((s) => s.playerId === p.id && s.position === "P")) {
           pitchingInnings.push(inn.inning);
         }
       });

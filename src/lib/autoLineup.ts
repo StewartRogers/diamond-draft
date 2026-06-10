@@ -64,12 +64,14 @@ type PlayerState = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Bullpen slots are warm-up (sitting), not innings pitched/caught — they do
+// not count toward pitch limits, rest, or pitch-after-catch.
 function isPitchingPos(pos: Position): boolean {
-  return pos === "P" || pos === "Bullpen - P";
+  return pos === "P";
 }
 
 function isCatchingPos(pos: Position): boolean {
-  return pos === "C" || pos === "Bullpen - C";
+  return pos === "C";
 }
 
 function isBenchPos(pos: Position): boolean {
@@ -188,6 +190,7 @@ export function buildStateFromInnings(
           const lockedSlot = lockedCurrentSlots.find((s) => s.playerId === p.id);
           if (!lockedSlot) return priorStreak;
           if (lockedSlot.position === "Bench") return priorStreak + 1;
+          if (lockedSlot.position === "Bullpen - P" || lockedSlot.position === "Bullpen - C") return priorStreak + 1;
           return 0; // locked to a field position — streak breaks
         })(),
         positionsPlayed: positionsPlayedSet(p.id, allForState),
@@ -294,9 +297,6 @@ function _solveOnce(
     const openSlots = inning.slots.filter((s) => !s.locked);
     const fieldSlots = openSlots.filter((s) => isFieldPosition(s.position));
     const benchSlots = openSlots.filter((s) => isBenchPos(s.position));
-    const bullpenSlots = openSlots.filter(
-      (s) => s.position === "Bullpen - P" || s.position === "Bullpen - C"
-    );
 
     const lockedFieldCount = inning.slots.filter(
       (s) => s.locked && s.playerId != null && isFieldPosition(s.position)
@@ -362,6 +362,11 @@ function _solveOnce(
       let s = 0;
 
       if (isFieldPosition(pos)) {
+        // Overall defense profile: prefer better defenders for all field positions.
+        // This is the primary assignment criterion — before position tier and fairness.
+        const defRating = player.defenseRating ?? 2.5;
+        s -= defRating * 100;
+
         // Position tier rating: prefer players rated higher at this position.
         // Tier 1 (Primary) = 0 penalty, Tier 2 (Secondary) = +40, Tier 3 (Can play) = +80,
         // Unrated = +60 (between Secondary and Can play — eligible but no preference set).
@@ -383,6 +388,9 @@ function _solveOnce(
               ? rules.globalPitchingLimitGame
               : totalInnings;
           s -= (gameLimit - ps.pitchInnings) * 5;
+          // Warm-up pattern: prefer a pitcher who sat last inning — their
+          // bench slot there can become Bullpen-P (warm-up before pitching).
+          if (ps.consecutiveBench > 0) s -= 25;
         }
         // Urgency: player needs field time and is running out of innings
         const remaining = remainingInnings(player.id, inningNumber + 1, totalInnings, overrides);
@@ -437,7 +445,7 @@ function _solveOnce(
     const tryAssign = (
       slots: InningSlot[],
       candidatePlayers: Player[],
-      phase: "pc" | "field" | "bullpen" = "field"
+      phase: "pc" | "field" = "field"
     ): void => {
       for (const slot of slots) {
         const unassigned = candidatePlayers.filter(
@@ -478,8 +486,6 @@ function _solveOnce(
             });
             log.push(`    Skipped: ${blockedList.join(" · ")}`);
           }
-        } else if (phase === "bullpen") {
-          log.push(`  ${slot.position}: ${pName(best)}`);
         } else {
           const ps = state.get(best.id)!;
           log.push(`  ${slot.position}: ${pName(best)} — ${tierLabel(best, slot.position)}, ${ps.fieldInnings} field inn`);
@@ -497,6 +503,31 @@ function _solveOnce(
       .sort((a) => (a.position === "P" ? -1 : 1));
 
     tryAssign(pitchCatchSlots.slice(0, fieldSpotsNeeded), available, "pc");
+
+    // Warm-up relabel: if the pitcher chosen for this inning sat on an open
+    // bench slot last inning, convert that slot to Bullpen-P. Both count as
+    // sitting for the consecutive-bench rule, so this changes no rule outcome —
+    // it just records the warm-up where it actually happens.
+    if (inningIdx > 0) {
+      const pAssigned = pitchCatchSlots.find(
+        (s) => s.position === "P" && s.playerId != null
+      );
+      if (pAssigned) {
+        const prev = resultInnings[inningIdx - 1];
+        const prevBench = prev.slots.find(
+          (s) => s.playerId === pAssigned.playerId && s.position === "Bench" && !s.locked
+        );
+        const prevBullpen = prev.slots.find(
+          (s) => s.position === "Bullpen - P" && !s.locked && s.playerId == null
+        );
+        if (prevBench && prevBullpen) {
+          prevBench.playerId = null;
+          prevBullpen.playerId = pAssigned.playerId;
+          const p = players.find((x) => x.id === pAssigned.playerId);
+          if (p) log.push(`  Warm-up: ${pName(p)} → Bullpen - P in inning ${inningNumber - 1}`);
+        }
+      }
+    }
 
     const filledPCCount = pitchCatchSlots.filter((s) => s.playerId !== null).length;
     const remainingFieldSpotsNeeded = Math.max(0, fieldSpotsNeeded - filledPCCount);
@@ -525,15 +556,25 @@ function _solveOnce(
 
     const benchCount = Math.max(
       0,
-      postPCAvailable.length - remainingFieldSpotsNeeded - bullpenSlots.length
+      postPCAvailable.length - remainingFieldSpotsNeeded
     );
 
-    // Players who MUST get a field slot (hit the consecutive-bench limit)
+    // Players who MUST get a field slot (hit the consecutive-bench limit, OR their
+    // next inning is a locked bullpen warmup — benching them now would create two
+    // consecutive sitting innings: current bench + next bullpen).
+    const nextInn = inningIdx + 1 < totalInnings ? resultInnings[inningIdx + 1] : null;
+    const hasLockedBullpenNext = (playerId: string): boolean =>
+      nextInn?.slots.some(
+        (s) => s.playerId === playerId && s.locked &&
+               (s.position === "Bullpen - P" || s.position === "Bullpen - C")
+      ) ?? false;
+
     const mustFieldIds = new Set<string>(
       rules.maxConsecutiveBench > 0
         ? postPCAvailable
             .filter(
-              (p) => state.get(p.id)!.consecutiveBench >= rules.maxConsecutiveBench
+              (p) => state.get(p.id)!.consecutiveBench >= rules.maxConsecutiveBench ||
+                     hasLockedBullpenNext(p.id)
             )
             .map((p) => p.id)
         : []
@@ -661,7 +702,6 @@ function _solveOnce(
     );
 
     tryAssign(sortedOtherFieldSlots.slice(0, remainingFieldSpotsNeeded), fieldCandidates, "field");
-    tryAssign(bullpenSlots, available, "bullpen");
 
     // Force-bench any players still without a slot. This should only happen
     // when there are genuinely more must-field players than field slots (an
