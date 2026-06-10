@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "test": "vitest run",
+    "eval": "vitest run --config vitest.eval.config.ts",
     "typecheck": "tsc --noEmit",
     "dev": "next dev",
     "build": "next build",

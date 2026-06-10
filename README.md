@@ -17,6 +17,7 @@ Other scripts:
 
 ```bash
 npm test           # vitest unit suite
+npm run eval       # live Gemini evals for the pitch-plan feature (needs GEMINI_API_KEY; skips without it)
 npm run lint       # ESLint
 npm run typecheck  # tsc --noEmit
 npm run build      # production build
