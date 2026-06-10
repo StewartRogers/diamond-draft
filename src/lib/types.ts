@@ -56,6 +56,15 @@ export const DEFENSE_TIER_CFG: Record<
   4: { label: "Elite",      bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
 };
 
+export const POSITION_TIER_CFG: Record<
+  PositionRating,
+  { label: string; bg: string; border: string; text: string; sup: string }
+> = {
+  1: { label: "Primary",   bg: "#fef3c7", border: "#f59e0b", text: "#92400e", sup: "¹" },
+  2: { label: "Secondary", bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", sup: "²" },
+  3: { label: "Can play",  bg: "#dcfce7", border: "#22c55e", text: "#166534", sup: "³" },
+};
+
 export type Player = {
   id: string;
   firstName: string;

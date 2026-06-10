@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 import type { Player, Position, FieldPosition, PositionRating, DefenseRating } from "@/lib/types";
-import { FIELD_POSITIONS, ALL_POSITIONS, DEFENSE_TIER_CFG } from "@/lib/types";
+import { FIELD_POSITIONS, ALL_POSITIONS, DEFENSE_TIER_CFG, POSITION_TIER_CFG } from "@/lib/types";
 
-// Tier display config — used in both the cycling buttons and the legend
-const TIER_CFG = {
-  1: { label: "Primary",   bg: "#fef3c7", border: "#f59e0b", text: "#92400e", sup: "¹" },
-  2: { label: "Secondary", bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", sup: "²" },
-  3: { label: "Can play",  bg: "#dcfce7", border: "#22c55e", text: "#166534", sup: "³" },
-} as const;
+const TIER_CFG = POSITION_TIER_CFG;
 
 const FIELD_POS_SET = new Set<string>(FIELD_POSITIONS);
 
