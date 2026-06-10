@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import type { Player } from "@/lib/types";
+import type { Player, FieldPosition } from "@/lib/types";
+import { POSITION_TIER_CFG } from "@/lib/types";
 import { useDiamondDraftStore } from "@/lib/store";
 import PlayerForm from "./PlayerForm";
 
@@ -83,14 +84,29 @@ export default function PlayerList() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {player.eligiblePositions.map((pos) => (
-                          <span
-                            key={pos}
-                          className="px-1.5 py-0.5 bg-slate-700 text-slate-200 rounded text-xs"
-                          >
-                            {pos}
-                          </span>
-                        ))}
+                        {player.eligiblePositions.map((pos) => {
+                          const rating = player.positionRatings?.[pos as FieldPosition];
+                          const cfg = rating ? POSITION_TIER_CFG[rating] : null;
+                          return (
+                            <span
+                              key={pos}
+                              className="px-1.5 py-0.5 rounded text-xs font-medium border"
+                              style={
+                                cfg
+                                  ? { background: cfg.bg, borderColor: cfg.border, color: cfg.text }
+                                  : { background: "#334155", borderColor: "#475569", color: "#cbd5e1" }
+                              }
+                              title={cfg ? cfg.label : undefined}
+                            >
+                              {pos}
+                              {cfg && (
+                                <sup style={{ fontSize: "0.6em", marginLeft: 1, fontWeight: 700 }}>
+                                  {cfg.sup}
+                                </sup>
+                              )}
+                            </span>
+                          );
+                        })}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-slate-400 text-center">

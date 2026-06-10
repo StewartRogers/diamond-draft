@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Game } from "@/lib/types";
+import { POSITION_TIER_CFG } from "@/lib/types";
 
 // ─── Color tokens ──────────────────────────────────────────────────────────────
 
@@ -71,8 +72,17 @@ export function ZChips({
       {fieldOnly.map((p) => {
         const z = ZONE_PAL[ZONE[p]];
         const tier = ratings?.[p];
+        const tierCfg = tier ? POSITION_TIER_CFG[tier] : null;
         return (
-          <span key={p} className="dd-zchip" style={{ background: z.bg, color: z.fg }}>
+          <span
+            key={p}
+            className="dd-zchip"
+            style={tierCfg
+              ? { background: tierCfg.bg, color: tierCfg.text }
+              : { background: z.bg, color: z.fg }
+            }
+            title={tierCfg ? tierCfg.label : undefined}
+          >
             {p}{tier && <sup style={{ fontSize: "0.7em", marginLeft: 1, opacity: 0.8 }}>{TIER_SUP[tier]}</sup>}
           </span>
         );
