@@ -15,7 +15,7 @@ import { FIELD_POSITIONS } from "@/lib/types";
 // ─── Design types ──────────────────────────────────────────────────────────────
 
 type FieldPos = "P" | "C" | "1B" | "2B" | "3B" | "SS" | "LF" | "CF" | "RF";
-type CellValue = FieldPos | "BENCH" | "LATE" | "OUT" | "ABSENT";
+type CellValue = FieldPos | "BENCH" | "BULLPEN" | "LATE" | "OUT" | "ABSENT";
 type Schedule = Record<string, CellValue[]>;
 type SortMode = "bat" | "jersey" | "name";
 type ViewMode = "grid" | "field";
@@ -40,7 +40,8 @@ const PAL = {
 };
 
 const WORD: Record<string, { bg: string; fg: string; t: string }> = {
-  BENCH:  { bg: "#f1efe8", fg: "#938e80", t: "Bench" },
+  BENCH:   { bg: "#f1efe8", fg: "#938e80", t: "Bench" },
+  BULLPEN: { bg: "#eef1e3", fg: "#5a7a3a", t: "Bullpen" },
   LATE:   { bg: "#f8f0db", fg: "#a16207", t: "Late" },
   OUT:    { bg: "#eae8e1", fg: "#9a958a", t: "Out" },
   ABSENT: { bg: "#f4f2ec", fg: "#bdb8ad", t: "—" },
@@ -171,8 +172,13 @@ function gameToSchedule(game: Game, players: Player[]): Schedule {
       let assigned: CellValue = "BENCH";
       if (innAsgn) {
         for (const slot of innAsgn.slots) {
-          if (slot.playerId === player.id && isField(slot.position)) {
+          if (slot.playerId !== player.id) continue;
+          if (isField(slot.position)) {
             assigned = slot.position as FieldPos;
+            break;
+          }
+          if (slot.position === "Bullpen - P" || slot.position === "Bullpen - C") {
+            assigned = "BULLPEN";
             break;
           }
         }
