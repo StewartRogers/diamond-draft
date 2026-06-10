@@ -41,7 +41,6 @@ vi.mock("@/lib/api", () => ({
 import {
   applyWarmupBullpen,
   assignPlayerToSlot,
-  toggleSlotLock,
   createEmptyInning,
   upsertPitchCatchAssignment,
 } from "@/lib/lineup";
@@ -55,7 +54,7 @@ import {
   getPlayerGameHistory,
 } from "@/lib/season";
 import { useDiamondDraftStore } from "@/lib/store";
-import type { Game, Season, Player, InningAssignment } from "@/lib/types";
+import type { Game, Season } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS, DEFAULT_LEAGUE_RULES } from "@/lib/types";
 import { makePlayer, makeRoster, makeRules, makeInnings, GAME_STUB, resetPlayerSeq } from "./helpers";
 
@@ -455,7 +454,6 @@ describe("exportGameLineupCsv", () => {
 
 describe("getPlayerGameHistory", () => {
   it("returns only finalized games where player appeared", () => {
-    const player = makePlayer({ id: "p1" });
     let innings = makeInnings(1);
     innings = assignPlayerToSlot(innings, 1, "P", "p1");
 
@@ -475,7 +473,6 @@ describe("getPlayerGameHistory", () => {
   });
 
   it("records inningsInField and inningsPitched correctly", () => {
-    const player = makePlayer({ id: "p1" });
     let innings = makeInnings(2);
     innings = assignPlayerToSlot(innings, 1, "P", "p1");
     innings = assignPlayerToSlot(innings, 2, "LF", "p1");

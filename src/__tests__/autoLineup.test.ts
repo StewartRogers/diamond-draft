@@ -8,8 +8,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildAutoLineup } from "@/lib/autoLineup";
 import { FIELD_POSITIONS } from "@/lib/types";
-import type { InningAssignment, Player, LeagueRules } from "@/lib/types";
-import { createEmptyInning, assignPlayerToSlot, toggleSlotLock } from "@/lib/lineup";
+import type { InningAssignment, Player } from "@/lib/types";
+import { assignPlayerToSlot, toggleSlotLock } from "@/lib/lineup";
 import { makePlayer, makeRules, resetPlayerSeq, makeRoster, makeInnings, GAME_STUB } from "./helpers";
 
 beforeEach(() => resetPlayerSeq());
@@ -21,13 +21,6 @@ function pitcherCount(innings: InningAssignment[], playerId: string): number {
     const slot = inn.slots.find(
       (s) => s.playerId === playerId && (s.position === "P" || s.position === "Bullpen - P")
     );
-    return sum + (slot ? 1 : 0);
-  }, 0);
-}
-
-function benchInnings(innings: InningAssignment[], playerId: string): number {
-  return innings.reduce((sum, inn) => {
-    const slot = inn.slots.find((s) => s.playerId === playerId && s.position === "Bench");
     return sum + (slot ? 1 : 0);
   }, 0);
 }

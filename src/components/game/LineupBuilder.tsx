@@ -10,7 +10,6 @@ import {
 import ReactDOM from "react-dom";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Game, Player, InningAssignment, InningSlot, PlayerGameOverride } from "@/lib/types";
-import { FIELD_POSITIONS } from "@/lib/types";
 
 // ─── Design types ──────────────────────────────────────────────────────────────
 

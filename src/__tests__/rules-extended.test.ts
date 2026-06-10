@@ -7,13 +7,12 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { validateInning, validateGame } from "@/lib/rules";
 import {
   makePlayer,
-  makeRoster,
   makeRules,
   makeInnings,
   resetPlayerSeq,
   GAME_STUB,
 } from "./helpers";
-import { createEmptyInning, assignPlayerToSlot } from "@/lib/lineup";
+import { assignPlayerToSlot } from "@/lib/lineup";
 import type { InningAssignment, PlayerGameOverride, Game, FieldPosition } from "@/lib/types";
 
 beforeEach(() => resetPlayerSeq());

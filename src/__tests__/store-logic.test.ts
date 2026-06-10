@@ -13,7 +13,6 @@ import {
   swapPlayersInInning,
   addInning,
   removeLastInning,
-  createEmptyInning,
   applyWarmupBullpen,
   assignPlayerToSlot,
 } from "@/lib/lineup";
