@@ -7,8 +7,11 @@ import type { AppSettings, Game, Player, Season } from "../types";
 import { DEFAULT_APP_SETTINGS } from "../types";
 import * as seasonLib from "../season";
 
-const dataDir = path.join(process.cwd(), "data");
-const dbPath = path.join(dataDir, "diamond-draft.sqlite3");
+// Overridable so tests (and alternate deployments) can point at another
+// directory. Resolved lazily in getDb() so the env var is read at first use.
+function getDataDir(): string {
+  return process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(process.cwd(), "data");
+}
 const DEFAULT_ROSTER_SEED = [
   { firstName: "Aiden", lastInitial: "A", jerseyNumber: "1" },
   { firstName: "Brooks", lastInitial: "B", jerseyNumber: "2" },
@@ -25,8 +28,9 @@ let db: InstanceType<typeof Database> | null = null;
 
 function getDb() {
   if (db) return db;
+  const dataDir = getDataDir();
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  db = new Database(dbPath);
+  db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS players (
