@@ -670,10 +670,13 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
     return game.battingOrder.filter((id) => !absentIds.has(id));
   });
 
+  // Hydration gate: must flip after first client render.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMounted(true); }, []);
 
   // Re-sync when game is updated externally (e.g., auto-fill)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSchedule(gameToSchedule(game, players));
     const absentIds = new Set(game.playerOverrides.filter((o) => o.status === "absent").map((o) => o.playerId));
     setBatting(game.battingOrder.filter((id) => !absentIds.has(id)));

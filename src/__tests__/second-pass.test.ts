@@ -116,7 +116,7 @@ describe("applyWarmupBullpen — clearing pitcher when Bullpen-P was not previou
   });
 
   it("does not unlock an already-unlocked Bullpen-P when pitcher is null", () => {
-    let innings = [createEmptyInning(1), createEmptyInning(2)];
+    const innings = [createEmptyInning(1), createEmptyInning(2)];
     // Inning 2 pitcher is null from the start
     const result = applyWarmupBullpen(innings);
     const bp = result[0].slots.find((s) => s.position === "Bullpen - P");
