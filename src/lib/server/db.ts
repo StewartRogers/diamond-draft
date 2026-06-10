@@ -76,14 +76,16 @@ function seedDefaultPlayersIfNeeded(): void {
 export function getAllPlayers(): Player[] {
   seedDefaultPlayersIfNeeded();
   return getDb()
-    .prepare("SELECT data FROM players")
+    .prepare<{ data: string }>("SELECT data FROM players")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Player);
+    .map((row) => JSON.parse(row.data) as Player);
 }
 
 export function getPlayer(id: string): Player | undefined {
   seedDefaultPlayersIfNeeded();
-  return rowTo<Player>(getDb().prepare("SELECT data FROM players WHERE id = ?").get(id));
+  return rowTo<Player>(
+    getDb().prepare<{ data: string }>("SELECT data FROM players WHERE id = ?").get(id)
+  );
 }
 
 export function savePlayer(player: Player): void {
@@ -106,13 +108,15 @@ export function savePlayers(players: Player[]): void {
 
 export function getAllGames(): Game[] {
   return getDb()
-    .prepare("SELECT data FROM games ORDER BY date DESC")
+    .prepare<{ data: string }>("SELECT data FROM games ORDER BY date DESC")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Game);
+    .map((row) => JSON.parse(row.data) as Game);
 }
 
 export function getGame(id: string): Game | undefined {
-  return rowTo<Game>(getDb().prepare("SELECT data FROM games WHERE id = ?").get(id));
+  return rowTo<Game>(
+    getDb().prepare<{ data: string }>("SELECT data FROM games WHERE id = ?").get(id)
+  );
 }
 
 export function saveGame(game: Game): void {
@@ -127,13 +131,15 @@ export function deleteGame(id: string): void {
 
 export function getAllSeasons(): Season[] {
   return getDb()
-    .prepare("SELECT data FROM seasons")
+    .prepare<{ data: string }>("SELECT data FROM seasons")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Season);
+    .map((row) => JSON.parse(row.data) as Season);
 }
 
 export function getSeason(id: string): Season | undefined {
-  return rowTo<Season>(getDb().prepare("SELECT data FROM seasons WHERE id = ?").get(id));
+  return rowTo<Season>(
+    getDb().prepare<{ data: string }>("SELECT data FROM seasons WHERE id = ?").get(id)
+  );
 }
 
 export function saveSeason(season: Season): void {
