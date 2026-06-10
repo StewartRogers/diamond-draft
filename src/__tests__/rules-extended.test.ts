@@ -14,7 +14,7 @@ import {
   GAME_STUB,
 } from "./helpers";
 import { createEmptyInning, assignPlayerToSlot } from "@/lib/lineup";
-import type { InningAssignment, PlayerGameOverride, Game } from "@/lib/types";
+import type { InningAssignment, PlayerGameOverride, Game, FieldPosition } from "@/lib/types";
 
 beforeEach(() => resetPlayerSeq());
 
@@ -51,7 +51,7 @@ function fieldPlayer(
   innings: InningAssignment[],
   playerId: string,
   inningNumber: number,
-  pos = "LF" as const
+  pos: FieldPosition = "LF"
 ): InningAssignment[] {
   return assignPlayerToSlot(innings, inningNumber, pos, playerId);
 }

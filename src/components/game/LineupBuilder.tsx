@@ -649,6 +649,10 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const [inning, setInning] = useState(0);
   const [edit, setEdit] = useState<EditDescriptor | null>(null);
   const [filling, setFilling] = useState(false);
+  const [autoLog, setAutoLog] = useState<string[]>([]);
+  const [autoWarnings, setAutoWarnings] = useState<string[]>([]);
+  const [showLog, setShowLog] = useState(false);
+  const [logCopied, setLogCopied] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPlanning, setAiPlanning] = useState(false);
   const [aiStatus, setAiStatus] = useState<string | null>(null);
@@ -816,8 +820,29 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   // ── Auto-fill ─────────────────────────────────────────────────────────────
   const handleAutoFill = async () => {
     setFilling(true);
-    try { await autoFillGame(game.id); }
-    finally { setFilling(false); }
+    setAutoLog([]);
+    setAutoWarnings([]);
+    setShowLog(false);
+    try {
+      const result = await autoFillGame(game.id);
+      setAutoLog(result.log);
+      setAutoWarnings(result.warnings);
+    } finally {
+      setFilling(false);
+    }
+  };
+
+  const autoLogText = () =>
+    [...autoWarnings.map((w) => `⚠ ${w}`), ...autoLog].join("\n");
+
+  const downloadAutoLog = () => {
+    const blob = new Blob([autoLogText()], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `auto-fill-log-${game.date.slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // ── Pitcher/catcher plan ───────────────────────────────────────────────────
@@ -912,6 +937,17 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="8" r="3" fill="#fff"/></svg>
                 {filling ? "Filling…" : "Auto-fill lineup"}
               </button>
+              {(autoLog.length > 0 || autoWarnings.length > 0) && (
+                <button
+                  onClick={() => setShowLog(true)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 14px", borderRadius: 9, border: "1px solid #d6d2c8", background: "#fff", color: "#57534a", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
+                >
+                  📋 Auto-fill log
+                  {autoWarnings.length > 0 && (
+                    <span style={{ color: "#b45309", fontSize: 11.5, fontWeight: 600 }}>({autoWarnings.length} ⚠)</span>
+                  )}
+                </button>
+              )}
               <button
                 onClick={() => window.print()}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: "#3f6212", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
@@ -1174,6 +1210,85 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
             })}
           </div>
         </div>
+
+        {/* ── Auto-fill log modal (portal — FitCard's transform breaks position:fixed) ── */}
+        {mounted && showLog && ReactDOM.createPortal(
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(40,35,25,.45)", padding: 16 }}
+            onClick={() => setShowLog(false)}
+          >
+            <div
+              style={{ background: "#fff", border: "1px solid #e7e4dc", borderRadius: 14, width: "100%", maxWidth: 680, maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 18px 50px rgba(40,35,25,.3)", fontFamily: "var(--font-hanken),'Hanken Grotesk',sans-serif" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 18px", borderBottom: "1px solid #e7e4dc", flexShrink: 0 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: "#211f1b" }}>Auto-fill Log</span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(autoLogText()).then(() => {
+                        setLogCopied(true);
+                        setTimeout(() => setLogCopied(false), 2000);
+                      });
+                    }}
+                    style={{ padding: "4px 12px", fontSize: 12, fontWeight: 600, borderRadius: 7, border: "1px solid #d6d2c8", background: "#faf8f3", color: "#57534a", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    {logCopied ? "✓ Copied!" : "Copy all"}
+                  </button>
+                  <button
+                    onClick={downloadAutoLog}
+                    style={{ padding: "4px 12px", fontSize: 12, fontWeight: 600, borderRadius: 7, border: "1px solid #d6d2c8", background: "#faf8f3", color: "#57534a", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    ⬇ Download .txt
+                  </button>
+                  <button
+                    onClick={() => setShowLog(false)}
+                    style={{ padding: "4px 12px", fontSize: 12, fontWeight: 600, borderRadius: 7, border: "1px solid #d6d2c8", background: "#faf8f3", color: "#57534a", cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+              </div>
+              <div style={{ overflowY: "auto", padding: "14px 18px", fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 12, lineHeight: 1.6 }}>
+                {autoWarnings.map((w, i) => (
+                  <div key={`w${i}`} style={{ color: "#b45309" }}>⚠ {w}</div>
+                ))}
+                {autoWarnings.length > 0 && (
+                  <div style={{ color: "#e7e4dc", margin: "8px 0" }}>{"─".repeat(40)}</div>
+                )}
+                {autoLog.map((line, i) => {
+                  const isInnHeader = line.startsWith("──");
+                  const isTopHeader = line.startsWith("Auto-fill:");
+                  const isWarningLine = line.includes("⚠") || line.startsWith("  Force-bench:");
+                  const isDeepIndent = line.startsWith("      ");
+                  const isIndent = line.startsWith("    ") && !isDeepIndent;
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        whiteSpace: "pre-wrap",
+                        ...(isTopHeader
+                          ? { color: "#6f6a60", marginBottom: 8 }
+                          : isInnHeader
+                          ? { color: "#211f1b", fontWeight: 700, marginTop: 12, marginBottom: 2 }
+                          : isWarningLine
+                          ? { color: "#b45309" }
+                          : isDeepIndent
+                          ? { color: "#a09a8e" }
+                          : isIndent
+                          ? { color: "#6f6a60" }
+                          : { color: "#44403a" }),
+                      }}
+                    >
+                      {line}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
