@@ -298,31 +298,6 @@ export function applyWarmupBullpen(innings: InningAssignment[]): InningAssignmen
         }),
       };
 
-      // Try to place the catcher from inning N into Bullpen-C in N-1
-      const cSlot = inn.slots.find((s) => s.position === "C");
-      const catcherId = cSlot?.playerId ?? null;
-      if (catcherId) {
-        const bcSlot = result[wi].slots.find((s) => s.position === "Bullpen - C");
-        if (!bcSlot?.locked || bcSlot.playerId === catcherId) {
-          const catcherInLocked = result[wi].slots.find(
-            (s) => s.playerId === catcherId && s.locked && s.position !== "Bullpen - C"
-          );
-          if (!catcherInLocked) {
-            result[wi] = {
-              ...result[wi],
-              slots: result[wi].slots.map((s) => {
-                if (s.playerId === catcherId && s.position !== "Bullpen - C" && !s.locked) {
-                  return { ...s, playerId: null };
-                }
-                if (s.position === "Bullpen - C") {
-                  return { ...s, playerId: catcherId, locked: true };
-                }
-                return s;
-              }),
-            };
-          }
-        }
-      }
     } else {
       // Pitcher was cleared — release Bullpen-P in N-1 if it was set as warm-up
       if (bpSlot && bpSlot.locked) {
