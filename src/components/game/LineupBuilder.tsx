@@ -243,7 +243,7 @@ function PlayerRow({
   editKey: string | null;
   onCell: (e: React.MouseEvent, id: string, inn: number) => void;
 }) {
-  const benchCount = sched.filter((v) => v === "BENCH").length;
+  const benchCount = sched.filter((v) => v === "BENCH" || v === "BULLPEN").length;
   const benchColor = benchCount === 0 ? "#c8c4bb" : benchCount >= 3 ? "#c2410c" : benchCount >= 2 ? "#ca8a04" : "#211f1b";
 
   return (
@@ -727,7 +727,8 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
     () => batting.filter((id) => {
       const s = schedule[id];
       if (!s) return false;
-      for (let i = 0; i < s.length - 1; i++) if (s[i] === "BENCH" && s[i + 1] === "BENCH") return true;
+      const isSitting = (v: CellValue) => v === "BENCH" || v === "BULLPEN";
+      for (let i = 0; i < s.length - 1; i++) if (isSitting(s[i]) && isSitting(s[i + 1])) return true;
       return false;
     }),
     [batting, schedule]

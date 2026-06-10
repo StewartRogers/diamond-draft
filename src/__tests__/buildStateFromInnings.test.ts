@@ -96,7 +96,7 @@ describe("buildStateFromInnings — fieldInnings", () => {
 // ─── pitchInnings agrees with totalInningsPitchedInGame ───────────────────────
 
 describe("buildStateFromInnings — pitchInnings", () => {
-  it("counts P and Bullpen-P as pitching innings", () => {
+  it("counts P but not Bullpen-P (warm-up) as pitching innings", () => {
     const players = makeRoster(2);
     const [pitcher] = players;
     let innings = makeInnings(3);
@@ -109,7 +109,7 @@ describe("buildStateFromInnings — pitchInnings", () => {
     expect(state.get(pitcher.id)!.pitchInnings).toBe(
       totalInningsPitchedInGame(pitcher.id, innings)
     );
-    expect(state.get(pitcher.id)!.pitchInnings).toBe(3);
+    expect(state.get(pitcher.id)!.pitchInnings).toBe(2);
   });
 });
 
@@ -166,7 +166,7 @@ describe("buildStateFromInnings — consecutiveBench", () => {
 // ─── lastPitchInning agrees with lastInningPitchedBefore ──────────────────────
 
 describe("buildStateFromInnings — lastPitchInning", () => {
-  it("returns the inning number of the most recent pitching assignment", () => {
+  it("returns the inning number of the most recent actual P assignment (Bullpen-P is warm-up, not pitching)", () => {
     const players = makeRoster(2);
     const [pitcher] = players;
     let innings = makeInnings(4);
@@ -179,7 +179,7 @@ describe("buildStateFromInnings — lastPitchInning", () => {
     expect(state.get(pitcher.id)!.lastPitchInning).toBe(
       lastInningPitchedBefore(pitcher.id, innings.slice(0, 3), 4)
     );
-    expect(state.get(pitcher.id)!.lastPitchInning).toBe(3);
+    expect(state.get(pitcher.id)!.lastPitchInning).toBe(1);
   });
 
   it("is null when player has never pitched", () => {

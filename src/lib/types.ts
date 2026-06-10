@@ -206,6 +206,7 @@ export type ViolationSeverity = "error" | "warning";
 
 export type ViolationCode =
   | "BACK_TO_BACK_BENCH"
+  | "BULLPEN_NOT_WARMUP"
   | "EXCEEDS_GAME_PITCH_LIMIT"
   | "EXCEEDS_SEASON_PITCH_LIMIT"
   | "INELIGIBLE_POSITION"

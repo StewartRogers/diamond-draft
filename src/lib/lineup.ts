@@ -261,12 +261,35 @@ export function applyWarmupBullpen(innings: InningAssignment[]): InningAssignmen
       // Don't override a bullpen slot locked to a different player
       if (bpSlot?.locked && bpSlot.playerId !== pitcherId) continue;
 
-      // Remove pitcher from any other non-locked slot in the warmup inning
+      // Skip warmup only for consecutive pitching — if the pitcher is already
+      // locked to P in the warmup inning, there is no warmup inning to record.
+      // For any other locked position (e.g. catching for another pitcher),
+      // the Bullpen-P assignment takes priority: release that slot and warm up.
+      const pitcherLockedToP = result[wi].slots.some(
+        (s) => s.playerId === pitcherId && s.locked && s.position === "P"
+      );
+      if (pitcherLockedToP) {
+        // Heal a duplicate created before this guard existed
+        if (bpSlot?.locked && bpSlot.playerId === pitcherId) {
+          result[wi] = {
+            ...result[wi],
+            slots: result[wi].slots.map((s) =>
+              s.position === "Bullpen - P" ? { ...s, playerId: null, locked: false } : s
+            ),
+          };
+        }
+        continue;
+      }
+
+      // Remove pitcher from any slot in the warmup inning (locked or not),
+      // except Bullpen-P itself. This handles the case where the pitcher was
+      // locked as C (catching for that inning's pitcher) — the Bullpen-P warmup
+      // takes priority and the catcher slot reverts to open.
       result[wi] = {
         ...result[wi],
         slots: result[wi].slots.map((s) => {
-          if (s.playerId === pitcherId && s.position !== "Bullpen - P" && !s.locked) {
-            return { ...s, playerId: null };
+          if (s.playerId === pitcherId && s.position !== "Bullpen - P") {
+            return { ...s, playerId: null, locked: false };
           }
           if (s.position === "Bullpen - P") {
             return { ...s, playerId: pitcherId, locked: true };

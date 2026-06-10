@@ -187,7 +187,8 @@ describe("buildAutoLineup — boundary: 0 innings", () => {
     const result = buildAutoLineup(players, [], [], makeRules(), GAME_STUB);
     expect(result.innings).toHaveLength(0);
     expect(result.feasible).toBe(true);
-    expect(result.log).toHaveLength(0);
+    // Only the run-summary header line — no per-inning entries
+    expect(result.log).toHaveLength(1);
   });
 });
 
@@ -222,7 +223,8 @@ describe("buildAutoLineup — zero-inning game (mirrors non-existent game fallba
   it("produces no log entries and is feasible (no constraints to violate)", () => {
     const result = buildAutoLineup([], [], [], makeRules(), GAME_STUB);
     expect(result.innings).toHaveLength(0);
-    expect(result.log).toHaveLength(0);
+    // Only the run-summary header line — no per-inning entries
+    expect(result.log).toHaveLength(1);
     expect(result.feasible).toBe(true);
   });
 });

@@ -387,16 +387,41 @@ describe("applyWarmupBullpen", () => {
     expect(result[1].slots.find((s) => s.position === "Bullpen - P")?.playerId).toBe("pitcher-B");
   });
 
-  it("does not move pitcher if they are in a locked non-bullpen slot in warm-up inning", () => {
+  it("skips warm-up when pitcher holds a locked slot in the warm-up inning (consecutive pitching)", () => {
     let innings = [createEmptyInning(1), createEmptyInning(2)];
-    // Assign pitcher-X to a locked P slot in inning 1 too
+    // pitcher-X pitches innings 1 AND 2 — already throwing in inning 1, so
+    // there is no warm-up, and placing them in Bullpen-P would assign one
+    // player to two positions in the same inning.
     innings = assignPlayerToSlot(innings, 1, "P", "pitcher-X");
     innings = toggleSlotLock(innings, 1, "P"); // locked in their inning-1 P spot
     innings = assignPlayerToSlot(innings, 2, "P", "pitcher-X");
     const result = applyWarmupBullpen(innings);
-    // Bullpen-P should have pitcher-X as warm-up
-    expect(result[0].slots.find((s) => s.position === "Bullpen - P")?.playerId).toBe("pitcher-X");
-    // But the locked P slot in inning 1 should NOT be cleared
+    // No bullpen warm-up — they're already pitching inning 1
+    expect(result[0].slots.find((s) => s.position === "Bullpen - P")?.playerId).toBeNull();
+    // The locked P slot in inning 1 is untouched
+    expect(result[0].slots.find((s) => s.position === "P")?.playerId).toBe("pitcher-X");
+  });
+
+  it("heals a pre-existing duplicate warm-up lock for a consecutive-innings pitcher", () => {
+    let innings = [createEmptyInning(1), createEmptyInning(2)];
+    innings = assignPlayerToSlot(innings, 1, "P", "pitcher-X");
+    innings = toggleSlotLock(innings, 1, "P");
+    innings = assignPlayerToSlot(innings, 2, "P", "pitcher-X");
+    // Simulate the old bug: pitcher duplicated into a locked Bullpen-P
+    innings = innings.map((inn) =>
+      inn.inning === 1
+        ? {
+            ...inn,
+            slots: inn.slots.map((s) =>
+              s.position === "Bullpen - P" ? { ...s, playerId: "pitcher-X", locked: true } : s
+            ),
+          }
+        : inn
+    );
+    const result = applyWarmupBullpen(innings);
+    const bp = result[0].slots.find((s) => s.position === "Bullpen - P");
+    expect(bp?.playerId).toBeNull();
+    expect(bp?.locked).toBe(false);
     expect(result[0].slots.find((s) => s.position === "P")?.playerId).toBe("pitcher-X");
   });
 });
