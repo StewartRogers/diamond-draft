@@ -4,9 +4,8 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { validateInning, validateGame, getComplianceSummary } from "@/lib/rules";
-import type { Game, Player, InningAssignment, InningSlot } from "@/lib/types";
-import { DEFAULT_LEAGUE_RULES } from "@/lib/types";
-import { createEmptyInning, assignPlayerToSlot } from "@/lib/lineup";
+import type { Game, Player, InningAssignment } from "@/lib/types";
+import { createEmptyInning } from "@/lib/lineup";
 import { makePlayer, makeRules, resetPlayerSeq, makeRoster } from "./helpers";
 
 beforeEach(() => resetPlayerSeq());

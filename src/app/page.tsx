@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useDiamondDraftStore } from "@/lib/store";
-import { C, Pill, GameRow, NewGameModal, PageHeader } from "@/components/AppShell";
+import { C, GameRow, NewGameModal, PageHeader } from "@/components/AppShell";
 
 export default function HomePage() {
   const players = useDiamondDraftStore((s) => s.players);

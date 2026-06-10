@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildAutoLineup, fillSingleInning } from "@/lib/autoLineup";
 import { applyWarmupBullpen, assignPlayerToSlot, mergeRosterIntoSnapshot, getPlayerGamePositions } from "@/lib/lineup";
-import { validateInning, validateGame } from "@/lib/rules";
+import { validateInning } from "@/lib/rules";
 import {
   makePlayer,
   makeRoster,
