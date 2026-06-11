@@ -105,13 +105,16 @@ describe("applyWarmupBullpen — pitcher cleared mid-game", () => {
     expect(getBullpenP(result, 1)?.locked).toBe(false);
   });
 
-  it("clears Bullpen-C warm-up when pitcher is cleared (catcher warm-up partner released)", () => {
+  it("clears Bullpen-C when pitcher is cleared (manually-locked Bullpen-C released)", () => {
     let innings = makeInnings(3);
     innings = assignPlayerToSlot(innings, 2, "P", "pitcher-X");
-    innings = assignPlayerToSlot(innings, 2, "C", "catcher-Y");
+    // Manually lock Bullpen-C (simulates a coach-set warm-up partner)
+    innings = assignPlayerToSlot(innings, 1, "Bullpen - C", "catcher-Y");
+    innings = toggleSlotLock(innings, 1, "Bullpen - C");
     innings = applyWarmupBullpen(innings);
 
-    // Both Bullpen-P and Bullpen-C should be locked in inning 1
+    // Bullpen-P should be locked, Bullpen-C stays as manually locked
+    expect(getBullpenP(innings, 1)?.playerId).toBe("pitcher-X");
     expect(getBullpenC(innings, 1)?.playerId).toBe("catcher-Y");
     expect(getBullpenC(innings, 1)?.locked).toBe(true);
 
@@ -158,19 +161,6 @@ describe("applyWarmupBullpen — Bullpen-C locked by different player", () => {
     expect(getBullpenC(result, 1)?.locked).toBe(true);
   });
 
-  it("DOES replace Bullpen-C when it is locked to the SAME catcher", () => {
-    let innings = makeInnings(2);
-    innings = assignPlayerToSlot(innings, 2, "P", "pitcher-X");
-    innings = assignPlayerToSlot(innings, 2, "C", "catcher-Y");
-    // Bullpen-C is locked to the same catcher — should be allowed to stay/be confirmed
-    innings = assignPlayerToSlot(innings, 1, "Bullpen - C", "catcher-Y");
-    innings = toggleSlotLock(innings, 1, "Bullpen - C");
-
-    const result = applyWarmupBullpen(innings);
-
-    // Should still be catcher-Y (same player, allowed)
-    expect(getBullpenC(result, 1)?.playerId).toBe("catcher-Y");
-  });
 });
 
 describe("applyWarmupBullpen — inning-1 pitcher has no warm-up", () => {
@@ -223,6 +213,5 @@ describe("applyWarmupBullpen — idempotency", () => {
     // Same player assignments
     expect(getBullpenP(twice, 1)?.playerId).toBe(getBullpenP(once, 1)?.playerId);
     expect(getBullpenP(twice, 2)?.playerId).toBe(getBullpenP(once, 2)?.playerId);
-    expect(getBullpenC(twice, 1)?.playerId).toBe(getBullpenC(once, 1)?.playerId);
   });
 });
