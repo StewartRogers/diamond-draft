@@ -224,15 +224,14 @@ export function removePlayerOverride(
 
 /**
  * For every inning N that has a pitcher assigned to the "P" slot, place that
- * pitcher in "Bullpen - P" for inning N-1 (warm-up). Also try to place the
- * catcher from inning N into "Bullpen - C" for inning N-1.
+ * pitcher in "Bullpen - P" for inning N-1 (warm-up).
  *
  * Rules:
  * - Only fills inning N-1 if it exists (no warm-up for inning 1).
- * - If the Bullpen-P/C slot in N-1 is already locked to a *different* player,
+ * - If the Bullpen-P slot in N-1 is already locked to a *different* player,
  *   it is left alone.
- * - The pitcher (and catcher) are removed from whichever other non-locked slot
- *   they occupied in N-1 before being placed in the bullpen.
+ * - The pitcher is removed from whichever other non-locked slot they occupied
+ *   in N-1 before being placed in Bullpen-P.
  * - Warm-up slots are locked so subsequent auto-fill passes leave them in place.
  * - If pitcherId is null (pitcher cleared), the matching Bullpen-P in N-1 is
  *   unlocked and cleared so the slot reverts to open.

@@ -1,11 +1,10 @@
 /**
  * Tests for applyWarmupBullpen in src/lib/lineup.ts
  * Covers all branches of the warm-up logic:
- *   - Basic pitcher/catcher filling
+ *   - Basic pitcher filling (Bullpen-P only — Bullpen-C is not auto-assigned)
  *   - Inning 1 pitcher (no warmup)
  *   - Clearing a pitcher (null) releases N-1 bullpen
  *   - Locked conflicting Bullpen-P slot skipped
- *   - Catcher in locked slot not moved
  *   - Multiple pitchers across innings
  *   - Same player pitches innings 2 AND 4
  */
@@ -43,20 +42,6 @@ describe("applyWarmupBullpen — basic filling", () => {
     const bp = result[0].slots.find((s) => s.position === "Bullpen - P");
     expect(bp?.playerId).toBe(pitcher.id);
     expect(bp?.locked).toBe(true);
-  });
-
-  it("catcher from inning 2 fills Bullpen-C in inning 1 (locked)", () => {
-    const pitcher = makePlayer();
-    const catcher = makePlayer();
-    let innings = [createEmptyInning(1), createEmptyInning(2)];
-    innings[1] = setSlot(innings[1], "P", pitcher.id);
-    innings[1] = setSlot(innings[1], "C", catcher.id);
-
-    const result = applyWarmupBullpen(innings);
-
-    const bc = result[0].slots.find((s) => s.position === "Bullpen - C");
-    expect(bc?.playerId).toBe(catcher.id);
-    expect(bc?.locked).toBe(true);
   });
 
   it("pitcher removed from other non-locked slots in warmup inning when placed in Bullpen-P", () => {
@@ -189,31 +174,6 @@ describe("applyWarmupBullpen — locked Bullpen-P in N-1 for different player", 
   });
 });
 
-// ─── Catcher in a locked field slot in N-1 — don't move ─────────────────────
-
-describe("applyWarmupBullpen — catcher in locked slot in N-1", () => {
-  it("does not move catcher to Bullpen-C if they are locked in a field slot in N-1", () => {
-    const pitcher = makePlayer();
-    const catcher = makePlayer();
-    let innings = [createEmptyInning(1), createEmptyInning(2)];
-    // Catcher is locked to 1B in inning 1
-    innings[0] = setSlot(innings[0], "1B", catcher.id, true);
-    innings[1] = setSlot(innings[1], "P", pitcher.id);
-    innings[1] = setSlot(innings[1], "C", catcher.id);
-
-    const result = applyWarmupBullpen(innings);
-
-    // Catcher should NOT be moved from their locked 1B slot
-    const lockedSlot = result[0].slots.find((s) => s.position === "1B");
-    expect(lockedSlot?.playerId).toBe(catcher.id);
-    expect(lockedSlot?.locked).toBe(true);
-
-    // Bullpen-C should remain empty
-    const bc = result[0].slots.find((s) => s.position === "Bullpen - C");
-    expect(bc?.playerId).toBeNull();
-  });
-});
-
 // ─── Multiple pitchers across innings ─────────────────────────────────────────
 
 describe("applyWarmupBullpen — multiple pitchers across innings", () => {
@@ -259,11 +219,13 @@ describe("applyWarmupBullpen — multiple pitchers across innings", () => {
 
     // Inning 1 Bullpen-P for inning 2 pitcher
     expect(result[0].slots.find((s) => s.position === "Bullpen - P")?.playerId).toBe(pitcher.id);
-    expect(result[0].slots.find((s) => s.position === "Bullpen - C")?.playerId).toBe(catcher.id);
 
     // Inning 3 Bullpen-P for inning 4 pitcher
     expect(result[2].slots.find((s) => s.position === "Bullpen - P")?.playerId).toBe(pitcher.id);
-    expect(result[2].slots.find((s) => s.position === "Bullpen - C")?.playerId).toBe(catcher.id);
+
+    // Bullpen-C is never auto-assigned
+    expect(result[0].slots.find((s) => s.position === "Bullpen - C")?.playerId).toBeNull();
+    expect(result[2].slots.find((s) => s.position === "Bullpen - C")?.playerId).toBeNull();
 
     // Inning 2 and 4 are unchanged (they are source innings)
     const bp2 = result[1].slots.find((s) => s.position === "Bullpen - P");
