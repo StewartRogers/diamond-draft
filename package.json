@@ -6,14 +6,16 @@
     "test": "vitest run",
     "eval": "vitest run --config vitest.eval.config.ts",
     "typecheck": "tsc --noEmit",
-    "dev": "next dev",
+    "dev": "next dev -p 4000",
+    "dev:vite": "vite --port 6000",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 4000",
     "lint": "eslint"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
     "better-sqlite3": "^12.10.0",
+    "immer": "^11.1.8",
     "next": "16.2.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
