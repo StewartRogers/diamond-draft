@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Game, Player } from "@/lib/types";
 import type { CellValue, EditDescriptor, FieldPos, Schedule, SortMode, ViewMode } from "./lineup/shared";
@@ -18,6 +19,7 @@ export interface LineupBuilderProps {
 }
 
 export default function LineupBuilder({ game, players }: LineupBuilderProps) {
+  const router = useRouter();
   const updateGameInnings = useDiamondDraftStore((s) => s.updateGameInnings);
   const setBattingOrder = useDiamondDraftStore((s) => s.setBattingOrder);
   const autoFillGame = useDiamondDraftStore((s) => s.autoFillGame);
@@ -260,7 +262,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 </button>
               )}
               <button
-                onClick={() => window.print()}
+                onClick={() => router.push(`/games/${game.id}/export`)}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: "#3f6212", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6V2.5h8V6M4 12h8v2.5H4zM3 6h10a1 1 0 011 1v4H2V7a1 1 0 011-1z" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round"/></svg>
