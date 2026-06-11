@@ -7,8 +7,11 @@ import type { AppSettings, Game, Player, Season } from "../types";
 import { DEFAULT_APP_SETTINGS } from "../types";
 import * as seasonLib from "../season";
 
-const dataDir = path.join(process.cwd(), "data");
-const dbPath = path.join(dataDir, "diamond-draft.sqlite3");
+// Overridable so tests (and alternate deployments) can point at another
+// directory. Resolved lazily in getDb() so the env var is read at first use.
+function getDataDir(): string {
+  return process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(process.cwd(), "data");
+}
 const DEFAULT_ROSTER_SEED = [
   { firstName: "Aiden", lastInitial: "A", jerseyNumber: "1" },
   { firstName: "Brooks", lastInitial: "B", jerseyNumber: "2" },
@@ -25,8 +28,9 @@ let db: InstanceType<typeof Database> | null = null;
 
 function getDb() {
   if (db) return db;
+  const dataDir = getDataDir();
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  db = new Database(dbPath);
+  db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
   db.pragma("journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS players (
@@ -76,14 +80,16 @@ function seedDefaultPlayersIfNeeded(): void {
 export function getAllPlayers(): Player[] {
   seedDefaultPlayersIfNeeded();
   return getDb()
-    .prepare("SELECT data FROM players")
+    .prepare<{ data: string }>("SELECT data FROM players")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Player);
+    .map((row) => JSON.parse(row.data) as Player);
 }
 
 export function getPlayer(id: string): Player | undefined {
   seedDefaultPlayersIfNeeded();
-  return rowTo<Player>(getDb().prepare("SELECT data FROM players WHERE id = ?").get(id));
+  return rowTo<Player>(
+    getDb().prepare<{ data: string }>("SELECT data FROM players WHERE id = ?").get(id)
+  );
 }
 
 export function savePlayer(player: Player): void {
@@ -106,13 +112,15 @@ export function savePlayers(players: Player[]): void {
 
 export function getAllGames(): Game[] {
   return getDb()
-    .prepare("SELECT data FROM games ORDER BY date DESC")
+    .prepare<{ data: string }>("SELECT data FROM games ORDER BY date DESC")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Game);
+    .map((row) => JSON.parse(row.data) as Game);
 }
 
 export function getGame(id: string): Game | undefined {
-  return rowTo<Game>(getDb().prepare("SELECT data FROM games WHERE id = ?").get(id));
+  return rowTo<Game>(
+    getDb().prepare<{ data: string }>("SELECT data FROM games WHERE id = ?").get(id)
+  );
 }
 
 export function saveGame(game: Game): void {
@@ -127,13 +135,15 @@ export function deleteGame(id: string): void {
 
 export function getAllSeasons(): Season[] {
   return getDb()
-    .prepare("SELECT data FROM seasons")
+    .prepare<{ data: string }>("SELECT data FROM seasons")
     .all()
-    .map((row: { data: string }) => JSON.parse(row.data) as Season);
+    .map((row) => JSON.parse(row.data) as Season);
 }
 
 export function getSeason(id: string): Season | undefined {
-  return rowTo<Season>(getDb().prepare("SELECT data FROM seasons WHERE id = ?").get(id));
+  return rowTo<Season>(
+    getDb().prepare<{ data: string }>("SELECT data FROM seasons WHERE id = ?").get(id)
+  );
 }
 
 export function saveSeason(season: Season): void {

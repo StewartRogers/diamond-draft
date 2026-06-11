@@ -105,7 +105,7 @@ describe("applyWarmupBullpen — pitcher cleared mid-game", () => {
     expect(getBullpenP(result, 1)?.locked).toBe(false);
   });
 
-  it("clears Bullpen-C when pitcher is cleared (manually-locked Bullpen-C released)", () => {
+  it("clears Bullpen-C warm-up when pitcher is cleared (catcher warm-up partner released)", () => {
     let innings = makeInnings(3);
     innings = assignPlayerToSlot(innings, 2, "P", "pitcher-X");
     // Manually lock Bullpen-C (simulates a coach-set warm-up partner)
@@ -113,8 +113,7 @@ describe("applyWarmupBullpen — pitcher cleared mid-game", () => {
     innings = toggleSlotLock(innings, 1, "Bullpen - C");
     innings = applyWarmupBullpen(innings);
 
-    // Bullpen-P should be locked, Bullpen-C stays as manually locked
-    expect(getBullpenP(innings, 1)?.playerId).toBe("pitcher-X");
+    // Both Bullpen-P and Bullpen-C should be locked in inning 1
     expect(getBullpenC(innings, 1)?.playerId).toBe("catcher-Y");
     expect(getBullpenC(innings, 1)?.locked).toBe(true);
 
@@ -123,7 +122,7 @@ describe("applyWarmupBullpen — pitcher cleared mid-game", () => {
     const result = applyWarmupBullpen(innings);
 
     expect(getBullpenC(result, 1)?.playerId).toBeNull();
-    expect(getBullpenC(result, 1)?.locked).toBe(false);
+    expect(getBullpenC(result, 1)?.locked).toBeFalsy();
   });
 
   it("new pitcher in inning 4 after clearing inning 3 pitcher sets up new warm-up", () => {

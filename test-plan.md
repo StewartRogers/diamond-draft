@@ -31,6 +31,16 @@ business-logic layer. Browser/E2E tests are out of scope (no Playwright wired up
 
 All tests live in `src/__tests__/`.
 
+### Integration — persistence and API routes (covered in this suite)
+
+`server-db.test.ts` exercises `src/lib/server/db.ts` against a real SQLite
+database in a temp directory (via `DIAMOND_DRAFT_DATA_DIR`): CRUD for all
+entities, default-roster seeding, `clearAllData`, and `restoreBackup`
+(including malformed-record handling). `api-routes-integration.test.ts`
+invokes the Next.js route handlers directly as functions over the same
+temp database, including the AI pitch-plan route with a mocked Gemini
+client (output sanitization, error statuses).
+
 #### `lineup.test.ts` — `src/lib/lineup.ts`
 
 | Group | What is tested |
@@ -108,7 +118,7 @@ All tests live in `src/__tests__/`.
 | Zustand store actions (`store.ts`) | Requires jsdom / React environment; no store tests wired up |
 | `fillSingleInning` | Thin wrapper around `buildAutoLineup`; covered implicitly |
 | `season.ts` | Aggregation helpers; straightforward reduce logic; low risk |
-| API routes (`api.ts`, `server/`) | Requires SQLite / Next.js request context |
+| `api.ts` client fetch wrappers | Thin fetch wrappers; requires a running server |
 | UI components | Requires Playwright or React Testing Library |
 | Print / export | UI concern only |
 

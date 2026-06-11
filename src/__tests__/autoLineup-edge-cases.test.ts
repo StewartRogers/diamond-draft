@@ -13,9 +13,8 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { buildAutoLineup } from "@/lib/autoLineup";
-import { applyWarmupBullpen, createEmptyInning, assignPlayerToSlot, toggleSlotLock } from "@/lib/lineup";
-import type { InningAssignment, Player, LeagueRules } from "@/lib/types";
-import { makePlayer, makeRules, makeRoster, makeInnings, GAME_STUB, resetPlayerSeq } from "./helpers";
+import { applyWarmupBullpen, assignPlayerToSlot, toggleSlotLock } from "@/lib/lineup";
+import { makeRules, makeRoster, makeInnings, GAME_STUB, resetPlayerSeq } from "./helpers";
 
 beforeEach(() => resetPlayerSeq());
 

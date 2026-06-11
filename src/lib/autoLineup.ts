@@ -18,7 +18,6 @@ import type {
   InningSlot,
   PlayerGameOverride,
   Position,
-  FieldPosition,
   LeagueRules,
   GameStatus,
 } from "./types";
@@ -158,8 +157,7 @@ export function buildStateFromInnings(
   priorInnings: InningAssignment[],
   lockedCurrentSlots: InningSlot[],
   currentInningNumber: number,
-  overrides: PlayerGameOverride[],
-  game: Pick<Game, "id">
+  overrides: PlayerGameOverride[]
 ): Map<string, PlayerState> {
   // Treat locked current slots as a synthetic committed inning so that state
   // reflects them when scoring open slots in the same inning.
@@ -277,8 +275,7 @@ function _solveOnce(
       resultInnings.slice(0, inningIdx),
       lockedCurrentSlots,
       inningNumber,
-      overrides,
-      game
+      overrides
     );
 
     // ── Collect locked player IDs ─────────────────────────────────────────

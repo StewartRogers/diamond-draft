@@ -19,19 +19,12 @@ import {
   totalInningsPitchedInGame,
 } from "@/lib/rules";
 import { assignPlayerToSlot } from "@/lib/lineup";
-import { makePlayer, makeRoster, makeInnings, resetPlayerSeq } from "./helpers";
-import type { InningAssignment, InningSlot, PlayerGameOverride } from "@/lib/types";
+import { makeRoster, makeInnings, resetPlayerSeq } from "./helpers";
+import type { InningSlot, PlayerGameOverride } from "@/lib/types";
 
 beforeEach(() => resetPlayerSeq());
 
-const GAME = { id: "test-game" };
 const NO_OVERRIDES: PlayerGameOverride[] = [];
-
-// ─── Helper: build synthetic locked-slot list from a committed inning ─────────
-
-function lockedSlots(inn: InningAssignment): InningSlot[] {
-  return inn.slots.filter((s) => s.locked && s.playerId != null);
-}
 
 // ─── Baseline: all-empty innings ──────────────────────────────────────────────
 
@@ -39,7 +32,7 @@ describe("buildStateFromInnings — all-empty innings", () => {
   it("all fields are zero/null/empty for a fresh game", () => {
     const players = makeRoster(3);
     const innings = makeInnings(3);
-    const state = buildStateFromInnings(players, [], [], 1, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, [], [], 1, NO_OVERRIDES);
 
     for (const p of players) {
       const ps = state.get(p.id)!;
@@ -70,7 +63,7 @@ describe("buildStateFromInnings — fieldInnings", () => {
     innings = assignPlayerToSlot(innings, 1, "RF", b.id);
 
     // Build state for inning 4 (all three innings committed)
-    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES);
 
     expect(state.get(a.id)!.fieldInnings).toBe(
       totalFieldInnings(a.id, innings)
@@ -87,7 +80,7 @@ describe("buildStateFromInnings — fieldInnings", () => {
     innings = assignPlayerToSlot(innings, 1, "LF", a.id);
     // inning 2 is open (no assignment yet)
 
-    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES);
     // Only inning 1 is prior — fieldInnings should be 1
     expect(state.get(a.id)!.fieldInnings).toBe(1);
   });
@@ -104,7 +97,7 @@ describe("buildStateFromInnings — pitchInnings", () => {
     innings = assignPlayerToSlot(innings, 2, "P", pitcher.id);
     innings = assignPlayerToSlot(innings, 3, "P", pitcher.id);
 
-    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES);
 
     expect(state.get(pitcher.id)!.pitchInnings).toBe(
       totalInningsPitchedInGame(pitcher.id, innings)
@@ -125,7 +118,7 @@ describe("buildStateFromInnings — consecutiveBench", () => {
     innings = assignPlayerToSlot(innings, 3, "Bench", a.id);
 
     // Building state for inning 4 — prior innings are 1,2,3
-    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES);
 
     expect(state.get(a.id)!.consecutiveBench).toBe(
       consecutiveBenchInnings(a.id, innings.slice(0, 3), 3, NO_OVERRIDES)
@@ -141,7 +134,7 @@ describe("buildStateFromInnings — consecutiveBench", () => {
     innings = assignPlayerToSlot(innings, 2, "Bench", a.id);
     innings = assignPlayerToSlot(innings, 3, "LF", a.id);
 
-    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings, [], 4, NO_OVERRIDES);
     expect(state.get(a.id)!.consecutiveBench).toBe(0);
   });
 
@@ -155,7 +148,7 @@ describe("buildStateFromInnings — consecutiveBench", () => {
       { playerId: a.id, status: "late", inning: 2 },
     ];
     // Inning 1: not available. Innings 2-3: bench. Streak = 2, not 3.
-    const state = buildStateFromInnings(players, innings, [], 4, overrides, GAME);
+    const state = buildStateFromInnings(players, innings, [], 4, overrides);
 
     expect(state.get(a.id)!.consecutiveBench).toBe(
       consecutiveBenchInnings(a.id, innings, 3, overrides)
@@ -174,7 +167,7 @@ describe("buildStateFromInnings — lastPitchInning", () => {
     innings = assignPlayerToSlot(innings, 2, "LF", pitcher.id);
     innings = assignPlayerToSlot(innings, 3, "Bullpen - P", pitcher.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES);
 
     expect(state.get(pitcher.id)!.lastPitchInning).toBe(
       lastInningPitchedBefore(pitcher.id, innings.slice(0, 3), 4)
@@ -188,7 +181,7 @@ describe("buildStateFromInnings — lastPitchInning", () => {
     let innings = makeInnings(2);
     innings = assignPlayerToSlot(innings, 1, "LF", a.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES);
     expect(state.get(a.id)!.lastPitchInning).toBeNull();
   });
 });
@@ -204,7 +197,7 @@ describe("buildStateFromInnings — lastActualPitchInning", () => {
     innings = assignPlayerToSlot(innings, 2, "LF", pitcher.id);
     innings = assignPlayerToSlot(innings, 3, "Bullpen - P", pitcher.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 3), [], 4, NO_OVERRIDES);
 
     expect(state.get(pitcher.id)!.lastActualPitchInning).toBe(
       lastActualPitchingInningBefore(pitcher.id, innings.slice(0, 3), 4)
@@ -219,7 +212,7 @@ describe("buildStateFromInnings — lastActualPitchInning", () => {
     let innings = makeInnings(2);
     innings = assignPlayerToSlot(innings, 1, "Bullpen - P", a.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES);
     expect(state.get(a.id)!.lastActualPitchInning).toBeNull();
   });
 });
@@ -234,7 +227,7 @@ describe("buildStateFromInnings — positionsPlayed and lastPosition", () => {
     innings = assignPlayerToSlot(innings, 1, "LF", a.id);
     innings = assignPlayerToSlot(innings, 2, "P", a.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 1), [], 2, NO_OVERRIDES);
     expect(state.get(a.id)!.positionsPlayed.has("LF")).toBe(true);
     expect(state.get(a.id)!.positionsPlayed.has("P")).toBe(false); // inning 2 not committed
   });
@@ -246,7 +239,7 @@ describe("buildStateFromInnings — positionsPlayed and lastPosition", () => {
     innings = assignPlayerToSlot(innings, 1, "LF", a.id);
     innings = assignPlayerToSlot(innings, 2, "RF", a.id);
 
-    const state = buildStateFromInnings(players, innings.slice(0, 2), [], 3, NO_OVERRIDES, GAME);
+    const state = buildStateFromInnings(players, innings.slice(0, 2), [], 3, NO_OVERRIDES);
     expect(state.get(a.id)!.lastPosition).toBe("RF");
   });
 
@@ -263,8 +256,7 @@ describe("buildStateFromInnings — positionsPlayed and lastPosition", () => {
       innings.slice(0, 1),
       locked,
       2,
-      NO_OVERRIDES,
-      GAME
+      NO_OVERRIDES
     );
     expect(state.get(pitcher.id)!.positionsPlayed.has("P")).toBe(true);
     expect(state.get(pitcher.id)!.positionsPlayed.has("LF")).toBe(true);
@@ -286,8 +278,7 @@ describe("buildStateFromInnings — locked current slots affect consecutiveBench
       innings.slice(0, 1),
       locked,
       2,
-      NO_OVERRIDES,
-      GAME
+      NO_OVERRIDES
     );
     // Inning 1: bench. Locked inning 2: bench. Streak through inning 2 = 2.
     expect(state.get(a.id)!.consecutiveBench).toBe(2);
@@ -305,8 +296,7 @@ describe("buildStateFromInnings — locked current slots affect consecutiveBench
       innings.slice(0, 1),
       locked,
       2,
-      NO_OVERRIDES,
-      GAME
+      NO_OVERRIDES
     );
     expect(state.get(a.id)!.consecutiveBench).toBe(0);
   });

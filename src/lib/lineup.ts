@@ -237,7 +237,7 @@ export function removePlayerOverride(
  *   unlocked and cleared so the slot reverts to open.
  */
 export function applyWarmupBullpen(innings: InningAssignment[]): InningAssignment[] {
-  let result: InningAssignment[] = innings.map((inn) => ({
+  const result: InningAssignment[] = innings.map((inn) => ({
     ...inn,
     slots: inn.slots.map((s) => ({ ...s })),
   }));

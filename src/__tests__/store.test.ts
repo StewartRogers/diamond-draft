@@ -16,7 +16,7 @@
  *   - setPlayerOverride with player not in roster (no crash)
  *   - createGame attaches to active season
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ── Mock @/lib/api before importing the store ─────────────────────────────────
 // Replaces all network calls with no-ops / resolved promises so the store's
@@ -40,10 +40,10 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { useDiamondDraftStore } from "@/lib/store";
-import type { Game, Season, Player, PlayerGameOverride } from "@/lib/types";
+import type { Game, Season, PlayerGameOverride } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS, DEFAULT_LEAGUE_RULES } from "@/lib/types";
 import { createEmptyInning } from "@/lib/lineup";
-import { makePlayer, makeRoster } from "./helpers";
+import { makeRoster } from "./helpers";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
