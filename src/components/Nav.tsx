@@ -5,10 +5,9 @@ import { usePathname } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
 
 const links = [
-  { href: "/", label: "Home" },
-  { href: "/roster", label: "Roster" },
-  { href: "/games", label: "Games" },
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/games", label: "Games" },
+  { href: "/roster", label: "Roster" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -54,6 +53,7 @@ export default function Nav() {
           whiteSpace: "nowrap",
           textDecoration: "none",
           color: "#211f1b",
+          cursor: "pointer",
         }}
       >
         <span
