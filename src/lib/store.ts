@@ -78,6 +78,7 @@ type DiamondDraftActions = {
   ) => Promise<void>;
   deleteGame: (id: string) => Promise<void>;
   finalizeGame: (gameId: string) => Promise<void>;
+  reopenGame: (gameId: string) => Promise<void>;
 
   // Lineup builder
   assignPlayer: (
@@ -340,6 +341,35 @@ export const useDiamondDraftStore = create<
 
       // Update pitching logs
       const updatedPlayers = seasonLib.recordPitchingFromGame(players, updatedGame);
+
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updatedGame;
+        s.players = updatedPlayers;
+      });
+
+      await Promise.all([
+        api.saveGame(updatedGame),
+        api.savePlayers(updatedPlayers),
+      ]);
+    },
+
+    reopenGame: async (gameId) => {
+      const { games, players } = get();
+      const game = games.find((g) => g.id === gameId);
+      if (!game) return;
+
+      const updatedGame: Game = {
+        ...game,
+        status: "draft",
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Remove this game's pitching log entries so season totals don't double-count on re-finalize
+      const updatedPlayers = players.map((p) => ({
+        ...p,
+        pitchingLog: p.pitchingLog.filter((e) => e.gameId !== gameId),
+      }));
 
       set((s) => {
         const idx = s.games.findIndex((g) => g.id === gameId);
