@@ -99,12 +99,13 @@ export function FieldView({
   onDirectBench: (id: string, inn: number) => void;
 }) {
   const byPos: Partial<Record<FieldPos, string>> = {};
-  const bench: string[] = [], late: string[] = [], out: string[] = [];
+  const bench: string[] = [], bullpen: string[] = [], late: string[] = [], out: string[] = [];
   for (const id of batting) {
     const v = schedule[id]?.[inning];
     if (!v) continue;
     if (isField(v)) byPos[v] = id;
     else if (v === "BENCH") bench.push(id);
+    else if (v === "BULLPEN") bullpen.push(id);
     else if (v === "LATE") late.push(id);
     else if (v === "OUT") out.push(id);
   }
@@ -143,7 +144,9 @@ export function FieldView({
         </div>
         <RosterSection title="On the bench" ids={bench} players={players}
           onPick={bench.length ? (e, id) => onCellEdit(e, id, inning) : null} />
-        {bench.length === 0 && late.length === 0 && out.length === 0 && (
+        <RosterSection title="Warming up (bullpen)" ids={bullpen} players={players}
+          onPick={bullpen.length ? (e, id) => onCellEdit(e, id, inning) : null} />
+        {bench.length === 0 && bullpen.length === 0 && late.length === 0 && out.length === 0 && (
           <div style={{ fontSize: 13, color: "#a09a8e" }}>Everyone available is on the field this inning.</div>
         )}
         <RosterSection title="Arriving late" ids={late} players={players} />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { Game, Player, RuleViolation } from "@/lib/types";
@@ -40,6 +40,10 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
 
   // Local schedule state — initialized from game, re-synced on game.updatedAt change
   const [schedule, setSchedule] = useState<Schedule>(() => gameToSchedule(game, players));
+  // Ref always tracks the latest schedule so assign/onCell can read current state
+  // without capturing a stale closure (fixes rapid double-click overwrite).
+  const scheduleRef = useRef(schedule);
+  scheduleRef.current = schedule;
   const [batting, setBatting] = useState<string[]>(() => {
     const absentIds = new Set(game.playerOverrides.filter((o) => o.status === "absent").map((o) => o.playerId));
     return game.battingOrder.filter((id) => !absentIds.has(id));
@@ -58,7 +62,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   }, [game.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const numInnings = game.innings.length;
-  const INN = Array.from({ length: numInnings }, (_, i) => i);
+  const INN = useMemo(() => Array.from({ length: numInnings }, (_, i) => i), [numInnings]);
 
   // Scratched (absent) players
   const scratchedIds = useMemo(() => {
@@ -72,8 +76,9 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   // ── Assignment logic (with swap) ──────────────────────────────────────────
   const assign = useCallback(
     (id: string, inn: number, pos: CellValue) => {
+      const prev = scheduleRef.current;
       const nextSchedule: Schedule = {};
-      for (const k of Object.keys(schedule)) nextSchedule[k] = [...schedule[k]];
+      for (const k of Object.keys(prev)) nextSchedule[k] = [...prev[k]];
 
       const curV = nextSchedule[id]?.[inn];
       if (isField(pos)) {
@@ -83,6 +88,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
         }
       }
       if (nextSchedule[id]) nextSchedule[id][inn] = pos;
+      scheduleRef.current = nextSchedule;
       setSchedule(nextSchedule);
       setEdit(null);
 
@@ -90,7 +96,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
       const newInnings = scheduleToInnings(nextSchedule, game.innings);
       updateGameInnings(game.id, newInnings).catch(console.error);
     },
-    [schedule, batting, game, updateGameInnings]
+    [batting, game, updateGameInnings]
   );
 
   // ── Live validation ───────────────────────────────────────────────────────
@@ -144,16 +150,16 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
 
   // ── Cell / position edit open ──────────────────────────────────────────────
   // Clicking a field-assigned cell immediately benches the player (1-click bench).
-  // Clicking a bench cell opens the position picker popover.
+  // Clicking a bench/bullpen cell opens the position picker popover.
   const onCell = useCallback((e: React.MouseEvent, id: string, inn: number) => {
-    const cur = schedule[id]?.[inn];
+    const cur = scheduleRef.current[id]?.[inn];
     if (isField(cur)) {
       assign(id, inn, "BENCH");
       return;
     }
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setEdit({ kind: "cell", id, inn, rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } });
-  }, [schedule, assign]);
+  }, [assign]);
 
   // Direct bench for FieldView filled-chip clicks (no MouseEvent needed).
   const onDirectBench = useCallback((id: string, inn: number) => {
@@ -166,12 +172,13 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   };
 
   // ── Check violations (read-only) ──────────────────────────────────────────
+  // Use game directly — assign() persists optimistically so game.innings is
+  // always current, and unlike scheduleToInnings, the real data includes bench
+  // slot assignments needed for BACK_TO_BACK_BENCH detection.
   const handleCheckViolations = useCallback(() => {
-    const tempInnings = scheduleToInnings(schedule, game.innings);
-    const tempGame = { ...game, innings: tempInnings };
-    const results = validateGame(tempGame, players, leagueRules);
+    const results = validateGame(game, players, leagueRules);
     setCheckResults(results);
-  }, [schedule, game, players, leagueRules]);
+  }, [game, players, leagueRules]);
 
   // ── Drag to reorder batting ───────────────────────────────────────────────
   const onGrip = (e: React.PointerEvent, id: string) => {

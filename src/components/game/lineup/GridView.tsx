@@ -22,8 +22,8 @@ function Cell({
       </span>
     );
   }
-  const ed = isField(v) || v === "BENCH";
-  const title = isField(v) ? "Click to bench" : v === "BENCH" ? "Click to assign position" : undefined;
+  const ed = isField(v) || v === "BENCH" || v === "BULLPEN";
+  const title = isField(v) ? "Click to bench" : (v === "BENCH" || v === "BULLPEN") ? "Click to assign position" : undefined;
   return (
     <td className="inncol" style={{ background: bg, padding: 0 }}>
       <div
