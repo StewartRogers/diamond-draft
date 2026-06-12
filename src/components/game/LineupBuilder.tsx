@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
-import type { Game, Player } from "@/lib/types";
+import type { Game, Player, RuleViolation } from "@/lib/types";
 import type { CellValue, EditDescriptor, FieldPos, Schedule, SortMode, ViewMode } from "./lineup/shared";
 import { CSS, PAL, isField, fmtName, gameToSchedule, scheduleToInnings } from "./lineup/shared";
 import { GridView, SortSeg, ViewToggle, InningStepper } from "./lineup/GridView";
@@ -12,6 +12,8 @@ import { CellPopover, PositionPopover } from "./lineup/Popovers";
 import { AvailabilityPanel } from "./lineup/AvailabilityPanel";
 import { PitchCatchPanel } from "./lineup/PitchCatchPanel";
 import { AutoFillLogModal } from "./lineup/AutoFillLogModal";
+import { ViolationsModal } from "./lineup/ViolationsModal";
+import { validateGame } from "@/lib/rules";
 
 export interface LineupBuilderProps {
   game: Game;
@@ -23,6 +25,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const updateGameInnings = useDiamondDraftStore((s) => s.updateGameInnings);
   const setBattingOrder = useDiamondDraftStore((s) => s.setBattingOrder);
   const autoFillGame = useDiamondDraftStore((s) => s.autoFillGame);
+  const leagueRules = useDiamondDraftStore((s) => s.settings.leagueRules);
 
   const [mounted, setMounted] = useState(false);
   const [sort, setSort] = useState<SortMode>("bat");
@@ -33,6 +36,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const [autoLog, setAutoLog] = useState<string[]>([]);
   const [autoWarnings, setAutoWarnings] = useState<string[]>([]);
   const [showLog, setShowLog] = useState(false);
+  const [checkResults, setCheckResults] = useState<RuleViolation[] | null>(null);
 
   // Local schedule state — initialized from game, re-synced on game.updatedAt change
   const [schedule, setSchedule] = useState<Schedule>(() => gameToSchedule(game, players));
@@ -139,14 +143,35 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   rows = rows.concat(scratchedIds);
 
   // ── Cell / position edit open ──────────────────────────────────────────────
-  const onCell = (e: React.MouseEvent, id: string, inn: number) => {
+  // Clicking a field-assigned cell immediately benches the player (1-click bench).
+  // Clicking a bench cell opens the position picker popover.
+  const onCell = useCallback((e: React.MouseEvent, id: string, inn: number) => {
+    const cur = schedule[id]?.[inn];
+    if (isField(cur)) {
+      assign(id, inn, "BENCH");
+      return;
+    }
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setEdit({ kind: "cell", id, inn, rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } });
-  };
+  }, [schedule, assign]);
+
+  // Direct bench for FieldView filled-chip clicks (no MouseEvent needed).
+  const onDirectBench = useCallback((id: string, inn: number) => {
+    assign(id, inn, "BENCH");
+  }, [assign]);
+
   const onPos = (e: React.MouseEvent, pos: FieldPos, inn: number) => {
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setEdit({ kind: "pos", pos, inn, rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } });
   };
+
+  // ── Check violations (read-only) ──────────────────────────────────────────
+  const handleCheckViolations = useCallback(() => {
+    const tempInnings = scheduleToInnings(schedule, game.innings);
+    const tempGame = { ...game, innings: tempInnings };
+    const results = validateGame(tempGame, players, leagueRules);
+    setCheckResults(results);
+  }, [schedule, game, players, leagueRules]);
 
   // ── Drag to reorder batting ───────────────────────────────────────────────
   const onGrip = (e: React.PointerEvent, id: string) => {
@@ -250,6 +275,13 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="8" r="3" fill="#fff"/></svg>
                 {filling ? "Filling…" : "Auto-fill lineup"}
               </button>
+              <button
+                onClick={handleCheckViolations}
+                style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 14px", borderRadius: 9, border: "1px solid #d6d2c8", background: "#fff", color: "#57534a", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
+              >
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="7" cy="7" r="5.5"/><path d="M7 4.5v3M7 9.5v.5"/></svg>
+                Check lineup
+              </button>
               {(autoLog.length > 0 || autoWarnings.length > 0) && (
                 <button
                   onClick={() => setShowLog(true)}
@@ -325,6 +357,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
               inning={inning}
               onCellEdit={onCell}
               onPosEdit={onPos}
+              onDirectBench={onDirectBench}
             />
           )}
 
@@ -370,6 +403,9 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
             gameDate={game.date}
             onClose={() => setShowLog(false)}
           />
+        )}
+        {mounted && checkResults !== null && (
+          <ViolationsModal violations={checkResults} onClose={() => setCheckResults(null)} />
         )}
     </div>
   );

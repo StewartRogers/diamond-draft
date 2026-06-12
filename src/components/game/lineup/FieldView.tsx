@@ -37,21 +37,22 @@ function FieldSVG() {
   );
 }
 
-function PosChip({ pos, playerId, player, onClick }: {
+function PosChip({ pos, playerId, player, onBench, onEmpty }: {
   pos: FieldPos; playerId: string | null; player: Player | null;
-  onClick: (e: React.MouseEvent) => void;
+  onBench: () => void;
+  onEmpty: (e: React.MouseEvent) => void;
 }) {
   const z = PAL[ZONE[pos]];
   if (!playerId || !player) {
     return (
-      <button className="ddchip empty" onClick={onClick}>
+      <button className="ddchip empty" onClick={onEmpty}>
         <span className="cc" style={{ color: "#8a936a" }}>{pos}</span>
         <span className="cn">+ open</span>
       </button>
     );
   }
   return (
-    <button className="ddchip" onClick={onClick} style={{ background: z.bg, border: `1px solid ${z.fg}2e` }}>
+    <button className="ddchip" onClick={onBench} title="Click to bench this player" style={{ background: z.bg, border: `1px solid ${z.fg}2e` }}>
       <span className="cc" style={{ color: z.fg }}>{pos} · #{player.jerseyNumber}</span>
       <span className="cn">{fmtName(player)}</span>
     </button>
@@ -89,12 +90,13 @@ function RosterSection({
 }
 
 export function FieldView({
-  schedule, batting, players, inning, onCellEdit, onPosEdit,
+  schedule, batting, players, inning, onCellEdit, onPosEdit, onDirectBench,
 }: {
   schedule: Schedule; batting: string[]; players: Player[];
   inning: number;
   onCellEdit: (e: React.MouseEvent, id: string, inn: number) => void;
   onPosEdit: (e: React.MouseEvent, pos: FieldPos, inn: number) => void;
+  onDirectBench: (id: string, inn: number) => void;
 }) {
   const byPos: Partial<Record<FieldPos, string>> = {};
   const bench: string[] = [], late: string[] = [], out: string[] = [];
@@ -121,7 +123,8 @@ export function FieldView({
               <div key={pos} style={{ position: "absolute", left: meta.x + "%", top: meta.y + "%", transform: "translate(-50%,-50%)", width: "max-content" }}>
                 <PosChip
                   pos={pos} playerId={pid} player={player}
-                  onClick={(e) => pid ? onCellEdit(e, pid, inning) : onPosEdit(e, pos, inning)}
+                  onBench={() => onDirectBench(pid!, inning)}
+                  onEmpty={(e) => onPosEdit(e, pos, inning)}
                 />
               </div>
             );
@@ -132,7 +135,7 @@ export function FieldView({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #ece9e1", paddingBottom: 14 }}>
           <div>
             <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: "-.01em" }}>Inning {inning + 1}</div>
-            <div style={{ fontSize: 12.5, color: "#a09a8e", marginTop: 2 }}>Tap a position to swap who plays it</div>
+            <div style={{ fontSize: 12.5, color: "#a09a8e", marginTop: 2 }}>Tap a filled position to bench · tap bench player to assign</div>
           </div>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 7, fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 13, fontWeight: 600, color: onF === 9 ? "#3f6212" : "#9a3412", background: onF === 9 ? "#eef1e3" : "#f6e7df", border: `1px solid ${onF === 9 ? "#dbe3c6" : "#eccfc0"}`, borderRadius: 999, padding: "6px 13px" }}>
             {onF}<span style={{ opacity: 0.5 }}>/9</span> on the field
