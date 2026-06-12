@@ -254,6 +254,8 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   // double-scaling and header text overlap.
   return (
     <div>
+      <PitchCatchPanel game={game} batting={batting} scratchedIds={scratchedIds} byId={byId} />
+
       <div className="ddg" style={{ width: 1320, background: "#fff", border: "1px solid #e7e4dc", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(40,35,25,.06), 0 18px 50px rgba(40,35,25,.07)" }}>
           <style>{CSS}</style>
 
@@ -400,8 +402,6 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
         </div>
 
         <AvailabilityPanel game={game} players={players} />
-
-        <PitchCatchPanel game={game} batting={batting} scratchedIds={scratchedIds} byId={byId} />
 
         {mounted && showLog && (
           <AutoFillLogModal
