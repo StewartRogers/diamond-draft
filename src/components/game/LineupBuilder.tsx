@@ -25,6 +25,8 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const updateGameInnings = useDiamondDraftStore((s) => s.updateGameInnings);
   const setBattingOrder = useDiamondDraftStore((s) => s.setBattingOrder);
   const autoFillGame = useDiamondDraftStore((s) => s.autoFillGame);
+  const finalizeGame = useDiamondDraftStore((s) => s.finalizeGame);
+  const reopenGame = useDiamondDraftStore((s) => s.reopenGame);
   const leagueRules = useDiamondDraftStore((s) => s.settings.leagueRules);
 
   const [mounted, setMounted] = useState(false);
@@ -33,6 +35,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const [inning, setInning] = useState(0);
   const [edit, setEdit] = useState<EditDescriptor | null>(null);
   const [filling, setFilling] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
   const [autoLog, setAutoLog] = useState<string[]>([]);
   const [autoWarnings, setAutoWarnings] = useState<string[]>([]);
   const [showLog, setShowLog] = useState(false);
@@ -245,6 +248,16 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
     }
   };
 
+  const handleFinalize = async () => {
+    setStatusBusy(true);
+    try { await finalizeGame(game.id); } finally { setStatusBusy(false); }
+  };
+
+  const handleReopen = async () => {
+    setStatusBusy(true);
+    try { await reopenGame(game.id); } finally { setStatusBusy(false); }
+  };
+
   const editKey = edit && edit.kind === "cell" ? edit.id + ":" + edit.inn : null;
 
   const game_date = new Date(game.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -309,6 +322,33 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6V2.5h8V6M4 12h8v2.5H4zM3 6h10a1 1 0 011 1v4H2V7a1 1 0 011-1z" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round"/></svg>
                 Print · 1 page
               </button>
+              <span style={{ width: 1, height: 24, background: "#e7e4dc", flexShrink: 0 }} />
+              {game.status === "draft" ? (
+                <button
+                  onClick={handleFinalize}
+                  disabled={statusBusy}
+                  title="Mark this lineup as final"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: statusBusy ? "#a8c47a" : "#3f6212", color: "#fff", fontWeight: 700, fontSize: 13, cursor: statusBusy ? "wait" : "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 7.5l3.5 3.5 6.5-7"/></svg>
+                  {statusBusy ? "Saving…" : "Finalize"}
+                </button>
+              ) : (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 13px", borderRadius: 9, background: "#eef1e3", border: "1px solid #dbe3c6", color: "#3f6212", fontWeight: 700, fontSize: 13, whiteSpace: "nowrap" }}>
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="#3f6212" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 7.5l3.5 3.5 6.5-7"/></svg>
+                    Finalized
+                  </span>
+                  <button
+                    onClick={handleReopen}
+                    disabled={statusBusy}
+                    title="Revert to draft to make changes"
+                    style={{ height: 36, padding: "0 12px", borderRadius: 9, border: "1px solid #d6d2c8", background: "#fff", color: "#57534a", fontWeight: 600, fontSize: 12.5, cursor: statusBusy ? "wait" : "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
+                  >
+                    {statusBusy ? "…" : "Re-open"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
