@@ -68,7 +68,7 @@ export default function ExportPage({ params }: { params: Promise<{ id: string }>
         }
 
         .print-title { font-size: 14pt; font-weight: bold; }
-        .print-subtitle { font-size: 10pt; color: #555; }
+        .print-subtitle { font-size: 10pt; color: #555; font-weight: bold; }
 
         .lineup-table {
           width: 100%;
@@ -78,10 +78,11 @@ export default function ExportPage({ params }: { params: Promise<{ id: string }>
 
         .lineup-table th,
         .lineup-table td {
-          border: 1px solid #999;
+          border: 2px solid #111;
           padding: 8px 6px;
           text-align: center;
           vertical-align: middle;
+          font-weight: bold;
         }
 
         /* Player name column gets more space */
@@ -143,7 +144,7 @@ export default function ExportPage({ params }: { params: Promise<{ id: string }>
             {order.map((pid, idx) => {
               const p = playerMap.get(pid);
               const name = p
-                ? `${p.firstName} ${p.lastInitial}.`
+                ? `${p.firstName} ${p.lastInitial}`
                 : pid;
               return (
                 <tr key={pid}>

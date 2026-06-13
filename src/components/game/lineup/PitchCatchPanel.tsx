@@ -98,13 +98,13 @@ export function PitchCatchPanel({
                 const currentId = pos === "P" ? plan?.pitcherId : plan?.catcherId;
                 const pal = pos === "P" ? { fg: "#9a6712", bg: "#f7eed7", bd: "#e8d8a4" } : { fg: "#345d86", bg: "#eef2f6", bd: "#c8d8e8" };
                 return (
-                  <div key={pos} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div key={pos} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                     <span style={{ fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 9.5, fontWeight: 600, letterSpacing: ".06em", color: pal.fg }}>{pos === "P" ? "PITCHER" : "CATCHER"}</span>
                     <select
                       value={currentId ?? ""}
                       disabled={isFinalized}
                       onChange={(e) => setPitchCatchAssignment(game.id, inn.inning, pos, e.target.value || null).catch(console.error)}
-                      style={{ fontSize: 12.5, fontWeight: 600, color: currentId ? pal.fg : "#a09a8e", background: currentId ? pal.bg : "#fff", border: `1px solid ${currentId ? pal.bd : "#e3e0d8"}`, borderRadius: 7, padding: "4px 7px", cursor: isFinalized ? "default" : "pointer", fontFamily: "inherit" }}
+                      style={{ width: "100%", fontSize: 12.5, fontWeight: 600, color: currentId ? pal.fg : "#a09a8e", background: currentId ? pal.bg : "#fff", border: `1px solid ${currentId ? pal.bd : "#e3e0d8"}`, borderRadius: 7, padding: "4px 7px", cursor: isFinalized ? "default" : "pointer", fontFamily: "inherit" }}
                     >
                       <option value="">Unassigned</option>
                       {allPlayers.map((pl) => (

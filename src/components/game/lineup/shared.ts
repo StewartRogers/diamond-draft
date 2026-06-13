@@ -56,7 +56,7 @@ export const FIELD_POS_MAP: Record<FieldPos, { x: number; y: number; name: strin
 
 export const isField = (v: string): v is FieldPos => FIELD_ORDER.includes(v as FieldPos);
 
-export const fmtName = (p: Player) => `${p.firstName} ${p.lastInitial}.`;
+export const fmtName = (p: Player) => `${p.firstName} ${p.lastInitial}`;
 
 // ─── The design CSS (injected as a <style> tag) ────────────────────────────────
 
