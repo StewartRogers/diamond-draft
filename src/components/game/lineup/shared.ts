@@ -181,11 +181,45 @@ export function gameToSchedule(game: Game, players: Player[]): Schedule {
 
 export function scheduleToInnings(schedule: Schedule, baseInnings: InningAssignment[]): InningAssignment[] {
   return baseInnings.map((inn, i) => {
-    const newSlots: InningSlot[] = inn.slots.map((slot) => {
-      if (!isField(slot.position)) return slot;
-      const pid = Object.keys(schedule).find((id) => schedule[id][i] === slot.position) ?? null;
-      return { ...slot, playerId: pid };
+    // Players assigned BULLPEN for this inning
+    const bullpenIds = new Set(
+      Object.keys(schedule).filter((id) => schedule[id][i] === "BULLPEN")
+    );
+
+    // Pass 1: update field slots + clear bullpen slots whose occupant moved away
+    const pass1: InningSlot[] = inn.slots.map((slot) => {
+      if (isField(slot.position)) {
+        const pid = Object.keys(schedule).find((id) => schedule[id][i] === slot.position) ?? null;
+        return { ...slot, playerId: pid };
+      }
+      if (slot.position === "Bullpen - P" || slot.position === "Bullpen - C") {
+        if (slot.playerId && !bullpenIds.has(slot.playerId)) {
+          // Occupant was manually moved away — clear and unlock so pitch plan can re-use
+          return { ...slot, playerId: null, locked: false };
+        }
+        return slot;
+      }
+      return slot;
     });
-    return { ...inn, slots: newSlots };
+
+    // Pass 2: place any newly BULLPEN-assigned players into empty bullpen slots
+    const occupiedBullpen = new Set(
+      pass1
+        .filter((s) => s.position === "Bullpen - P" || s.position === "Bullpen - C")
+        .map((s) => s.playerId)
+        .filter((id): id is string => id !== null)
+    );
+    const unplaced = [...bullpenIds].filter((id) => !occupiedBullpen.has(id));
+    if (unplaced.length === 0) return { ...inn, slots: pass1 };
+
+    let ui = 0;
+    const finalSlots = pass1.map((slot) => {
+      if (ui >= unplaced.length) return slot;
+      if ((slot.position === "Bullpen - P" || slot.position === "Bullpen - C") && !slot.playerId) {
+        return { ...slot, playerId: unplaced[ui++] };
+      }
+      return slot;
+    });
+    return { ...inn, slots: finalSlots };
   });
 }
