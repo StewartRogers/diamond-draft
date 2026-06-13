@@ -72,6 +72,12 @@ export function CellPopover({
         </svg>
         Bench this inning
       </button>
+      <button className={"bench" + (cur === "BULLPEN" ? " on" : "")} onClick={() => onAssign(id, inn, "BULLPEN")}>
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <circle cx="7" cy="5" r="2.5"/><path d="M4 13c0-1.657 1.343-3 3-3s3 1.343 3 3" strokeLinecap="round"/>
+        </svg>
+        Bullpen this inning
+      </button>
     </div>,
     document.body
   );
