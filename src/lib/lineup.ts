@@ -345,11 +345,11 @@ export function mergeRosterIntoSnapshot(
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
 export function formatPlayerName(player: Player): string {
-  return `${player.firstName} ${player.lastInitial}. #${player.jerseyNumber}`;
+  return `${player.firstName} ${player.lastInitial} #${player.jerseyNumber}`;
 }
 
 export function formatPlayerShort(player: Player): string {
-  return `${player.firstName} ${player.lastInitial}.`;
+  return `${player.firstName} ${player.lastInitial}`;
 }
 
 /** Get the position assigned to a player in a specific inning, or null. */

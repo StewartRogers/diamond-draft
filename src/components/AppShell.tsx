@@ -463,7 +463,7 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
                     style={{ accentColor: C.amber, width: 15, height: 15, flexShrink: 0 }}
                   />
                   <span style={{ fontSize: 13.5, color: absentIds.has(p.id) ? C.amber : C.ink }}>
-                    #{p.jerseyNumber} {p.firstName} {p.lastInitial}.
+                    #{p.jerseyNumber} {p.firstName} {p.lastInitial}
                   </span>
                 </label>
               ))}

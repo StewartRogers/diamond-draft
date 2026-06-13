@@ -50,10 +50,10 @@ export const DEFENSE_TIER_CFG: Record<
   DefenseRating,
   { label: string; bg: string; border: string; text: string }
 > = {
-  1: { label: "Developing", bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
-  2: { label: "Average",    bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
-  3: { label: "Strong",     bg: "#dcfce7", border: "#22c55e", text: "#166534" },
-  4: { label: "Elite",      bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
+  1: { label: "Emerging",    bg: "#f1f5f9", border: "#94a3b8", text: "#475569" },
+  2: { label: "Established", bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  3: { label: "Proven",      bg: "#dcfce7", border: "#22c55e", text: "#166534" },
+  4: { label: "Elite",       bg: "#fef3c7", border: "#f59e0b", text: "#92400e" },
 };
 
 export const POSITION_TIER_CFG: Record<
@@ -185,7 +185,7 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
   minFieldPlayers: 9,
   maxFieldPlayers: 9,
   maxConsecutiveBench: 1,
-  minFieldInningsPerPlayer: 2,
+  minFieldInningsPerPlayer: 3,
   globalPitchingLimitGame: 3,
   pitchingRestInnings: 0,
   enforcePositionEligibility: true,

@@ -185,12 +185,15 @@ export function validateInning(
   const playerMap = new Map(players.map((p) => [p.id, p]));
 
   const assignedSlots = slots.filter((s) => s.playerId !== null);
-  const fieldSlots = assignedSlots.filter((s) => isFieldPosition(s.position));
+  // Bench slots are passive storage (auto-fill bookkeeping); only field and
+  // bullpen slots represent meaningful in-game assignments.
+  const activeSlots = assignedSlots.filter((s) => s.position !== "Bench");
+  const fieldSlots = activeSlots.filter((s) => isFieldPosition(s.position));
   const fieldPlayerIds = new Set(fieldSlots.map((s) => s.playerId!));
 
   // ── Detect a player assigned multiple positions in the same inning ───────
   const playerCounts = new Map<string, number>();
-  for (const s of assignedSlots) {
+  for (const s of activeSlots) {
     const id = s.playerId!;
     playerCounts.set(id, (playerCounts.get(id) ?? 0) + 1);
   }
@@ -200,7 +203,7 @@ export function validateInning(
       violations.push({
         code: "PLAYER_MULTIPLE_POSITIONS",
         severity: "error",
-        message: `Inning ${inning}: ${p?.firstName ?? "Player"} ${p?.lastInitial ?? ""}. assigned to ${count} positions at once.`,
+        message: `Inning ${inning}: ${p?.firstName ?? "Player"} ${p?.lastInitial ?? ""} assigned to ${count} positions at once.`,
         playerId,
         inning,
       });
@@ -242,7 +245,7 @@ export function validateInning(
     }
   }
 
-  for (const slot of assignedSlots) {
+  for (const slot of activeSlots) {
     const playerId = slot.playerId!;
     const player = playerMap.get(playerId);
     if (!player) continue;
@@ -264,7 +267,7 @@ export function validateInning(
             ? "PLAYER_NOT_YET_ARRIVED"
             : "PLAYER_ALREADY_DEPARTED",
         severity: "error",
-        message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. is ${statusLabel} but has an assignment.`,
+        message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} is ${statusLabel} but has an assignment.`,
         playerId,
         inning,
       });
@@ -279,7 +282,7 @@ export function validateInning(
       violations.push({
         code: "INELIGIBLE_POSITION",
         severity: "error",
-        message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. is not eligible for ${slot.position}.`,
+        message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} is not eligible for ${slot.position}.`,
         playerId,
         inning,
         position: slot.position,
@@ -300,7 +303,7 @@ export function validateInning(
         violations.push({
           code: "EXCEEDS_GAME_PITCH_LIMIT",
           severity: "error",
-          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. would exceed game pitching limit (${gameLimit} innings).`,
+          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} would exceed game pitching limit (${gameLimit} innings).`,
           playerId,
           inning,
           position: slot.position,
@@ -313,7 +316,7 @@ export function validateInning(
           violations.push({
             code: "EXCEEDS_SEASON_PITCH_LIMIT",
             severity: "error",
-            message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. would exceed season pitching limit (${player.pitchingLimitSeason} innings).`,
+            message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} would exceed season pitching limit (${player.pitchingLimitSeason} innings).`,
             playerId,
             inning,
             position: slot.position,
@@ -330,7 +333,7 @@ export function validateInning(
             violations.push({
               code: "PITCHING_TOO_SOON",
               severity: "error",
-              message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. cannot pitch again so soon after inning ${last}. Required rest: ${rules.pitchingRestInnings} inning(s).`,
+              message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} cannot pitch again so soon after inning ${last}. Required rest: ${rules.pitchingRestInnings} inning(s).`,
               playerId,
               inning,
               position: slot.position,
@@ -353,7 +356,7 @@ export function validateInning(
         violations.push({
           code: "PITCHING_AFTER_CATCHING",
           severity: "error",
-          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. cannot pitch after catching.`,
+          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} cannot pitch after catching.`,
           playerId,
           inning,
           position: slot.position,
@@ -377,7 +380,7 @@ export function validateInning(
           violations.push({
             code: "PITCHER_RETURNED_AFTER_REMOVAL",
             severity: "error",
-            message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. was removed from the pitcher role and may not return.`,
+            message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} was removed from the pitcher role and may not return.`,
             playerId,
             inning,
             position: slot.position,
@@ -393,7 +396,7 @@ export function validateInning(
         violations.push({
           code: "BACK_TO_BACK_BENCH",
           severity: "error",
-          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. has been on bench ${consecutive} inning(s) in a row (max ${rules.maxConsecutiveBench}).`,
+          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} has been on bench ${consecutive} inning(s) in a row (max ${rules.maxConsecutiveBench}).`,
           playerId,
           inning,
         });
@@ -412,7 +415,7 @@ export function validateInning(
         violations.push({
           code: "BULLPEN_NOT_WARMUP",
           severity: "warning",
-          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial}. is in ${slot.position} but is not ${role === "P" ? "pitching" : "catching"} in inning ${inning + 1}.`,
+          message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} is in ${slot.position} but is not ${role === "P" ? "pitching" : "catching"} in inning ${inning + 1}.`,
           playerId,
           inning,
           position: slot.position,
@@ -479,7 +482,7 @@ export function validateGame(
         violations.push({
           code: "INSUFFICIENT_FIELD_TIME",
           severity: "warning",
-          message: `${player.firstName} ${player.lastInitial}. only has ${fieldInnings} field inning(s) (minimum ${rules.minFieldInningsPerPlayer}).`,
+          message: `${player.firstName} ${player.lastInitial} only has ${fieldInnings} field inning(s) (minimum ${rules.minFieldInningsPerPlayer}).`,
           playerId: player.id,
         });
       }
@@ -508,7 +511,7 @@ export function validateGame(
             violations.push({
               code: "UNBALANCED_FIELD_TIME",
               severity: "warning",
-              message: `${player.firstName} ${player.lastInitial}. has ${fieldCounts[idx]} field inning(s) vs ${maxCount} maximum — difference exceeds 1 (RULE_010).`,
+              message: `${player.firstName} ${player.lastInitial} has ${fieldCounts[idx]} field inning(s) vs ${maxCount} maximum — difference exceeds 1 (RULE_010).`,
               playerId: player.id,
             });
           }
@@ -526,7 +529,7 @@ export function validateGame(
       violations.push({
         code: "EXCEEDS_SEASON_PITCH_LIMIT",
         severity: "error",
-        message: `${player.firstName} ${player.lastInitial}. exceeds season pitching limit: ${seasonPitched + gamePitched}/${player.pitchingLimitSeason} innings.`,
+        message: `${player.firstName} ${player.lastInitial} exceeds season pitching limit: ${seasonPitched + gamePitched}/${player.pitchingLimitSeason} innings.`,
         playerId: player.id,
       });
     }
