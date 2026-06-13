@@ -108,7 +108,7 @@ export function PitchCatchPanel({
                     >
                       <option value="">Unassigned</option>
                       {allPlayers.map((pl) => (
-                        <option key={pl.id} value={pl.id}>{pl.firstName} {pl.lastInitial}. #{pl.jerseyNumber}</option>
+                        <option key={pl.id} value={pl.id}>{pl.firstName} {pl.lastInitial} #{pl.jerseyNumber}</option>
                       ))}
                     </select>
                   </div>

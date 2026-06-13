@@ -80,7 +80,7 @@ export default function PlayerList() {
                       {player.jerseyNumber}
                     </td>
                     <td className="px-4 py-3 text-slate-100 font-medium">
-                      {player.firstName} {player.lastInitial}.
+                      {player.firstName} {player.lastInitial}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
@@ -164,7 +164,7 @@ export default function PlayerList() {
                       <td colSpan={6} className="px-4 py-3 bg-red-950/40">
                         <div className="flex items-center gap-4">
                           <span className="text-sm text-red-300">
-                            Remove {player.firstName} {player.lastInitial}.? This cannot be undone.
+                            Remove {player.firstName} {player.lastInitial}? This cannot be undone.
                           </span>
                           <button
                             onClick={async () => {

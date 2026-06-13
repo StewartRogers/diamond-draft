@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     const live = players.find((p) => p.id === player.id) ?? player;
     return {
       id: live.id,
-      name: `${live.firstName} ${live.lastInitial}.`,
+      name: `${live.firstName} ${live.lastInitial}`,
       eligiblePositions: live.eligiblePositions,
       pitchingLimitGame: live.pitchingLimitGame,
       pitchingLimitSeason: live.pitchingLimitSeason,

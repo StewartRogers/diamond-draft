@@ -127,12 +127,34 @@ export default function SettingsPage() {
         <div style={{ padding: "18px 0 6px" }}>
           <span className="dd-eyebrow">Fair-play rules</span>
         </div>
-        <RuleRow
-          title="Minimum 2 innings on the field"
-          body="Flag any player who fields fewer than two innings across the game."
-          on={rules.enforceFairPlayTime}
-          onToggle={() => updateLeagueRules({ enforceFairPlayTime: !rules.enforceFairPlayTime })}
-        />
+        <div
+          style={{
+            display: "flex", justifyContent: "space-between", gap: 20,
+            padding: "16px 0", borderBottom: `1px solid ${C.line2}`,
+          }}
+        >
+          <div style={{ maxWidth: 540 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 700 }}>Minimum innings on the field</div>
+            <div style={{ fontSize: 13, color: C.faint, marginTop: 3 }}>
+              Flag any player who fields fewer than the required number of innings across the game.
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <input
+              type="number"
+              min={1}
+              max={9}
+              disabled={!rules.enforceFairPlayTime}
+              value={rules.minFieldInningsPerPlayer}
+              onChange={(e) => {
+                const v = Math.max(1, Math.min(9, Number(e.target.value)));
+                if (!isNaN(v)) updateLeagueRules({ minFieldInningsPerPlayer: v });
+              }}
+              style={{ width: 52, padding: "4px 8px", borderRadius: 7, border: `1px solid ${C.line2}`, fontSize: 14, fontWeight: 700, textAlign: "center", opacity: rules.enforceFairPlayTime ? 1 : 0.4 }}
+            />
+            <Toggle on={rules.enforceFairPlayTime} onToggle={() => updateLeagueRules({ enforceFairPlayTime: !rules.enforceFairPlayTime })} />
+          </div>
+        </div>
         <RuleRow
           title="No back-to-back bench"
           body="Flag a player benched in two consecutive innings."

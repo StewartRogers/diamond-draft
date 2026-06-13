@@ -181,12 +181,14 @@ export function gameToSchedule(game: Game, players: Player[]): Schedule {
 
 export function scheduleToInnings(schedule: Schedule, baseInnings: InningAssignment[]): InningAssignment[] {
   return baseInnings.map((inn, i) => {
-    // Players assigned BULLPEN for this inning
     const bullpenIds = new Set(
       Object.keys(schedule).filter((id) => schedule[id][i] === "BULLPEN")
     );
+    const benchIds = new Set(
+      Object.keys(schedule).filter((id) => schedule[id][i] === "BENCH")
+    );
 
-    // Pass 1: update field slots + clear bullpen slots whose occupant moved away
+    // Pass 1: sync all slot types
     const pass1: InningSlot[] = inn.slots.map((slot) => {
       if (isField(slot.position)) {
         const pid = Object.keys(schedule).find((id) => schedule[id][i] === slot.position) ?? null;
@@ -194,8 +196,16 @@ export function scheduleToInnings(schedule: Schedule, baseInnings: InningAssignm
       }
       if (slot.position === "Bullpen - P" || slot.position === "Bullpen - C") {
         if (slot.playerId && !bullpenIds.has(slot.playerId)) {
-          // Occupant was manually moved away — clear and unlock so pitch plan can re-use
+          // Occupant moved away — clear and unlock so pitch plan can re-use
           return { ...slot, playerId: null, locked: false };
+        }
+        return slot;
+      }
+      if (slot.position === "Bench") {
+        // Clear stale bench entries — if the occupant is now on the field or bullpen,
+        // leaving them here causes a PLAYER_MULTIPLE_POSITIONS violation.
+        if (slot.playerId && !benchIds.has(slot.playerId)) {
+          return { ...slot, playerId: null };
         }
         return slot;
       }

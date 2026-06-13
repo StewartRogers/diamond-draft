@@ -287,7 +287,7 @@ export default function DashboardPage() {
                     {/* Name */}
                     <td style={{ padding: "10px 12px", verticalAlign: "middle", whiteSpace: "nowrap" }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>
-                        {player.firstName} {player.lastInitial}.
+                        {player.firstName} {player.lastInitial}
                       </span>
                     </td>
                     {/* Games */}

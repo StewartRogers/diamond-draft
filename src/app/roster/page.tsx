@@ -113,7 +113,7 @@ export default function RosterPage() {
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 15, fontWeight: 700 }}>
-                            {player.firstName} {player.lastInitial}.
+                            {player.firstName} {player.lastInitial}
                           </span>
                           {player.isGuest && (
                             <span className="dd-zchip" style={{ background: C.amberBg, color: C.amber }}>
@@ -193,7 +193,7 @@ export default function RosterPage() {
                         <td colSpan={6} style={{ background: "#fdf2f1", padding: "12px 24px" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13 }}>
                             <span style={{ color: C.red }}>
-                              Remove {player.firstName} {player.lastInitial}.? This cannot be undone.
+                              Remove {player.firstName} {player.lastInitial}? This cannot be undone.
                             </span>
                             <button
                               className="dd-btn pri sm"

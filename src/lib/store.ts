@@ -215,6 +215,11 @@ export const useDiamondDraftStore = create<
       set((s) => {
         const idx = s.players.findIndex((p) => p.id === id);
         if (idx >= 0) s.players[idx] = updated;
+        // Keep rosterSnapshots in sync so game pages reflect the latest name/data
+        for (const game of s.games) {
+          const si = game.rosterSnapshot.findIndex((p) => p.id === id);
+          if (si >= 0) game.rosterSnapshot[si] = updated;
+        }
       });
       await api.savePlayer(updated);
     },

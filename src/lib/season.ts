@@ -251,7 +251,7 @@ export function exportSeasonStatsCsv(
   const rows = players.map((p) => {
     const s = statsMap.get(p.id);
     return [
-      `"${p.firstName} ${p.lastInitial}."`,
+      `"${p.firstName} ${p.lastInitial}"`,
       p.jerseyNumber,
       s?.gamesPlayed ?? 0,
       s?.inningsInField ?? 0,
@@ -282,7 +282,7 @@ export function exportGameLineupCsv(game: Game): string {
       const slot = inn.slots.find((s) => s.playerId === p.id);
       return slot ? slot.position : "";
     });
-    return [`"${p.firstName} ${p.lastInitial}."`, p.jerseyNumber, ...cols].join(",");
+    return [`"${p.firstName} ${p.lastInitial}"`, p.jerseyNumber, ...cols].join(",");
   });
 
   return [header, ...rows].join("\n");

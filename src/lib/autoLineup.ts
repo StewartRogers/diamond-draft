@@ -240,7 +240,7 @@ function _solveOnce(
 
   log.push(`Auto-fill: ${players.length} players, ${totalInnings} innings`);
 
-  const pName = (p: Player) => `${p.firstName} ${p.lastInitial}.`;
+  const pName = (p: Player) => `${p.firstName} ${p.lastInitial}`;
   const tierLabel = (player: Player, pos: Position): string => {
     const tier = (player.positionRatings as Partial<Record<string, number>> | undefined)?.[pos];
     return tier === 1 ? "primary" : tier === 2 ? "secondary" : tier === 3 ? "can-play" : "unrated";
@@ -716,7 +716,7 @@ function _solveOnce(
       assignedThisInning.add(player.id);
       if (wouldViolateBench) {
         warnings.push(
-          `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial}. ` +
+          `Inning ${inningNumber}: ${player.firstName} ${player.lastInitial} ` +
           `force-benched — no eligible field slot available to avoid back-to-back bench.`
         );
       }
