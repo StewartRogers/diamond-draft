@@ -21,6 +21,9 @@ export default function ExportPage({ params }: { params: Promise<{ id: string }>
   }
 
   const playerMap = new Map(players.map((p) => [p.id, p]));
+  const overrideMap = new Map(
+    (game.playerOverrides ?? []).map((o) => [o.playerId, o])
+  );
   const absentIds = new Set(
     (game.playerOverrides ?? [])
       .filter((o) => o.status === "absent")
@@ -151,11 +154,20 @@ export default function ExportPage({ params }: { params: Promise<{ id: string }>
                   <td className="col-num">{idx + 1}</td>
                   <td className="col-name">{name}</td>
                   {inningNums.map((n) => {
-                    const inn = inningMap.get(n);
-                    const slot = inn?.slots.find((s) => s.playerId === pid);
+                    const override = overrideMap.get(pid);
+                    let label = "";
+                    if (override?.status === "late" && override.inning != null && n < override.inning) {
+                      label = "Late";
+                    } else if (override?.status === "earlyLeave" && override.inning != null && n > override.inning) {
+                      label = "Out";
+                    } else {
+                      const inn = inningMap.get(n);
+                      const slot = inn?.slots.find((s) => s.playerId === pid);
+                      label = slot?.position ?? "Bench";
+                    }
                     return (
                       <td key={n} className="col-inn">
-                        {slot?.position ?? ""}
+                        {label}
                       </td>
                     );
                   })}
