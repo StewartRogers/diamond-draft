@@ -209,11 +209,12 @@ export function GameRow({ game }: { game: Game }) {
     game.status === "finalized"
       ? { t: "Finalized", fg: C.green, bg: C.greenBg, bd: C.greenBd }
       : { t: "Draft", fg: C.amber, bg: C.amberBg, bd: C.amberBd };
+  const hasStats = !!game.gameStats;
 
   return (
     <>
       <div style={{ position: "relative" }}>
-        <Link href={`/games/${game.id}`} className="dd-listrow" style={{ paddingRight: 52 }}>
+        <Link href={`/games/${game.id}`} className="dd-listrow" style={{ paddingRight: 92 }}>
           {/* Date chip */}
           <div
             style={{
@@ -253,6 +254,32 @@ export function GameRow({ game }: { game: Game }) {
               <path d="M6.5 4l5 5-5 5"/>
             </svg>
           </div>
+        </Link>
+
+        {/* Stats button */}
+        <Link
+          href={`/games/${game.id}/stats`}
+          onClick={(e) => e.stopPropagation()}
+          title="View / edit game stats"
+          style={{
+            position: "absolute", right: 48, top: "50%", transform: "translateY(-50%)",
+            width: 32, height: 32, borderRadius: 8,
+            background: hasStats ? C.blueBg : "transparent",
+            border: hasStats ? `1px solid ${C.blueBd}` : "none",
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: hasStats ? C.blue : C.faint,
+            textDecoration: "none",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = C.blueBg; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = hasStats ? C.blueBg : "transparent"; }}
+        >
+          {/* Bar-chart icon */}
+          <svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="10" width="3" height="6" rx="1"/>
+            <rect x="7.5" y="6" width="3" height="10" rx="1"/>
+            <rect x="13" y="2" width="3" height="14" rx="1"/>
+          </svg>
         </Link>
 
         {/* Delete button — overlaid so it doesn't inherit the link */}

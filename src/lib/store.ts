@@ -5,6 +5,7 @@ import { immer } from "zustand/middleware/immer";
 import type {
   Player,
   Game,
+  GameStats,
   Season,
   AppSettings,
   Position,
@@ -125,6 +126,12 @@ type DiamondDraftActions = {
 
   // Batting order
   setBattingOrder: (gameId: string, order: string[]) => Promise<void>;
+
+  // Game stats (post-game hitting / pitching)
+  updateGameStats: (gameId: string, stats: GameStats) => Promise<void>;
+
+  // External ID (used for CSV imports)
+  setGameExternalId: (gameId: string, externalId: string) => Promise<void>;
 
   // Direct game innings update (used by LineupBuilder for batch assignments)
   updateGameInnings: (gameId: string, innings: InningAssignment[]) => Promise<void>;
@@ -662,6 +669,28 @@ export const useDiamondDraftStore = create<
       });
       await api.saveGame(updated);
       get().revalidate(gameId);
+    },
+
+    updateGameStats: async (gameId, stats) => {
+      const game = get().games.find((g) => g.id === gameId);
+      if (!game) return;
+      const updated: Game = { ...game, gameStats: stats, updatedAt: new Date().toISOString() };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await api.saveGame(updated);
+    },
+
+    setGameExternalId: async (gameId, externalId) => {
+      const game = get().games.find((g) => g.id === gameId);
+      if (!game) return;
+      const updated: Game = { ...game, externalId, updatedAt: new Date().toISOString() };
+      set((s) => {
+        const idx = s.games.findIndex((g) => g.id === gameId);
+        if (idx >= 0) s.games[idx] = updated;
+      });
+      await api.saveGame(updated);
     },
 
     // ── Batting order management ──────────────────────────────────────────
