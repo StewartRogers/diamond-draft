@@ -141,6 +141,10 @@ export type Game = {
   playerOverrides: PlayerGameOverride[];
   /** Snapshot of the roster at the time of the game */
   rosterSnapshot: Player[];
+  /** Post-game hitting and pitching stats (optional — logged after the game) */
+  gameStats?: GameStats;
+  /** User-defined external ID used for CSV imports (e.g. "G1", "2024-05-15") */
+  externalId?: string;
   status: GameStatus;
   createdAt: string;
   updatedAt: string;
@@ -198,6 +202,8 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
 export type AppSettings = {
   activeSeasonId: string | null;
   teamName: string;
+  headCoach?: string;
+  leagueDivision?: string;
   leagueRules: LeagueRules;
   onboardingComplete: boolean;
 };
@@ -205,6 +211,8 @@ export type AppSettings = {
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   activeSeasonId: null,
   teamName: "",
+  headCoach: "",
+  leagueDivision: "",
   leagueRules: DEFAULT_LEAGUE_RULES,
   onboardingComplete: false,
 };
@@ -240,6 +248,35 @@ export type RuleViolation = {
   playerId?: string;
   inning?: number;
   position?: Position;
+};
+
+// ─── Game stats (hitting / pitching logged after a game) ─────────────────────
+
+export type HittingStats = {
+  playerId: string;
+  /** Total plate appearances (AB + BB). AB is derived as PA − BB. */
+  plateAppearances: number;
+  hits: number;
+  walks: number;
+};
+
+/**
+ * Innings pitched stored in baseball notation as a number:
+ *   2.1 = 2 innings + 1 out, 2.2 = 2 innings + 2 outs
+ * Use addIP() to aggregate across entries.
+ */
+export type PitchingGameStats = {
+  playerId: string;
+  inningsPitched: number;
+  pitches: number;
+  strikeouts: number;
+  hitsAllowed: number;
+  walksAllowed: number;
+};
+
+export type GameStats = {
+  hitting: HittingStats[];
+  pitching: PitchingGameStats[];
 };
 
 // ─── Season stats ─────────────────────────────────────────────────────────────
