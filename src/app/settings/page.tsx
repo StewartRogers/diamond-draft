@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useDiamondDraftStore } from "@/lib/store";
 import { C, PageHeader } from "@/components/AppShell";
 
@@ -34,6 +35,8 @@ function RuleRow({
 export default function SettingsPage() {
   const rules = useDiamondDraftStore((s) => s.settings.leagueRules);
   const teamName = useDiamondDraftStore((s) => s.settings.teamName);
+  const headCoach = useDiamondDraftStore((s) => s.settings.headCoach ?? "");
+  const leagueDivision = useDiamondDraftStore((s) => s.settings.leagueDivision ?? "");
   const updateSettings = useDiamondDraftStore((s) => s.updateSettings);
   const updateLeagueRules = useDiamondDraftStore((s) => s.updateLeagueRules);
   const exportBackup = useDiamondDraftStore((s) => s.exportBackup);
@@ -41,6 +44,8 @@ export default function SettingsPage() {
   const clearAllData = useDiamondDraftStore((s) => s.clearAllData);
 
   const [localTeamName, setLocalTeamName] = useState(teamName);
+  const [localHeadCoach, setLocalHeadCoach] = useState(headCoach);
+  const [localLeagueDivision, setLocalLeagueDivision] = useState(leagueDivision);
   const [defaultInnings, setDefaultInnings] = useState(String(rules.defaultInnings));
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -48,7 +53,7 @@ export default function SettingsPage() {
   const flash = () => { setSaved(true); setTimeout(() => setSaved(false), 2000); };
 
   async function handleSaveTeam() {
-    await updateSettings({ teamName: localTeamName.trim() });
+    await updateSettings({ teamName: localTeamName.trim(), headCoach: localHeadCoach.trim(), leagueDivision: localLeagueDivision.trim() });
     await updateLeagueRules({ defaultInnings: Number(defaultInnings) || 7 });
     flash();
   }
@@ -97,11 +102,21 @@ export default function SettingsPage() {
           </div>
           <div className="dd-field">
             <label>Head coach</label>
-            <input className="dd-input" placeholder="e.g. Coach Jamie" />
+            <input
+              className="dd-input"
+              value={localHeadCoach}
+              onChange={(e) => setLocalHeadCoach(e.target.value)}
+              placeholder="e.g. Coach Jamie"
+            />
           </div>
           <div className="dd-field">
             <label>League / division</label>
-            <input className="dd-input" placeholder="e.g. Spring Minors · 9U" />
+            <input
+              className="dd-input"
+              value={localLeagueDivision}
+              onChange={(e) => setLocalLeagueDivision(e.target.value)}
+              placeholder="e.g. Spring Minors · 9U"
+            />
           </div>
           <div className="dd-field">
             <label>Default innings</label>
@@ -115,7 +130,7 @@ export default function SettingsPage() {
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
-          <button className="dd-btn sec" onClick={() => { setLocalTeamName(teamName); setDefaultInnings(String(rules.defaultInnings)); }}>
+          <button className="dd-btn sec" onClick={() => { setLocalTeamName(teamName); setLocalHeadCoach(headCoach); setLocalLeagueDivision(leagueDivision); setDefaultInnings(String(rules.defaultInnings)); }}>
             Discard
           </button>
           <button className="dd-btn pri" onClick={handleSaveTeam}>Save team info</button>
@@ -195,6 +210,7 @@ export default function SettingsPage() {
             Import backup
             <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
           </label>
+          <Link href="/import" className="dd-btn sec">Import CSV data →</Link>
         </div>
         <div style={{ borderTop: `1px solid ${C.line2}`, marginTop: 20, paddingTop: 16 }}>
           {!confirmClear ? (

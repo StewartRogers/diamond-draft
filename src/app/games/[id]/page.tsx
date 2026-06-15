@@ -14,6 +14,7 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
   const activeGameId = useDiamondDraftStore((s) => s.activeGameId);
 
   const updateGameMeta = useDiamondDraftStore((s) => s.updateGameMeta);
+  const setGameExternalId = useDiamondDraftStore((s) => s.setGameExternalId);
 
   const game = games.find((g) => g.id === id);
 
@@ -22,6 +23,9 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
   const [editOpponent, setEditOpponent] = useState("");
   const [editTeamName, setEditTeamName] = useState("");
   const [editNotes, setEditNotes] = useState("");
+
+  const [editingExtId, setEditingExtId] = useState(false);
+  const [editExtId, setEditExtId] = useState("");
 
   useEffect(() => {
     if (game && activeGameId !== id) {
@@ -100,19 +104,62 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>
             {game.teamName ?? "Team"} vs {game.opponent || "—"}
           </div>
           <div style={{ fontSize: 13, color: C.faint }}>{game.date}</div>
           {game.notes && <div style={{ fontSize: 13, color: C.faint, fontStyle: "italic" }}>{game.notes}</div>}
-          <button className="dd-btn" style={{ marginLeft: "auto" }} onClick={() => {
-            setEditDate(game.date);
-            setEditOpponent(game.opponent ?? "");
-            setEditTeamName(game.teamName ?? "");
-            setEditNotes(game.notes ?? "");
-            setEditing(true);
-          }}>Edit details</button>
+
+          {/* External ID badge / inline edit */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: "auto" }}>
+            {editingExtId ? (
+              <>
+                <input
+                  value={editExtId}
+                  onChange={(e) => setEditExtId(e.target.value)}
+                  placeholder="e.g. G22"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { setGameExternalId(id, editExtId.trim()); setEditingExtId(false); }
+                    if (e.key === "Escape") setEditingExtId(false);
+                  }}
+                  style={{
+                    width: 90, padding: "4px 8px", borderRadius: 6, fontSize: 13,
+                    border: `1px solid ${C.blue}`, fontFamily: "var(--font-ibm-mono,'IBM Plex Mono',monospace)",
+                    background: C.blueBg, color: C.ink, outline: "none",
+                  }}
+                />
+                <button className="dd-btn pri sm" onClick={() => { setGameExternalId(id, editExtId.trim()); setEditingExtId(false); }}>Save</button>
+                <button className="dd-btn ghost sm" onClick={() => setEditingExtId(false)}>Cancel</button>
+              </>
+            ) : (
+              <button
+                onClick={() => { setEditExtId(game.externalId ?? ""); setEditingExtId(true); }}
+                title="Set external ID for CSV imports"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+                  borderRadius: 6, border: `1px solid ${game.externalId ? C.blueBd : C.line}`,
+                  background: game.externalId ? C.blueBg : "transparent",
+                  cursor: "pointer", fontSize: 12.5,
+                  color: game.externalId ? C.blue : C.faint,
+                  fontFamily: game.externalId ? "var(--font-ibm-mono,'IBM Plex Mono',monospace)" : "inherit",
+                }}
+              >
+                {game.externalId ?? "Set external ID"}
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                  <path d="M11 2l3 3-8 8H3v-3L11 2z"/>
+                </svg>
+              </button>
+            )}
+            <button className="dd-btn" onClick={() => {
+              setEditDate(game.date);
+              setEditOpponent(game.opponent ?? "");
+              setEditTeamName(game.teamName ?? "");
+              setEditNotes(game.notes ?? "");
+              setEditing(true);
+            }}>Edit details</button>
+          </div>
         </div>
       )}
 
