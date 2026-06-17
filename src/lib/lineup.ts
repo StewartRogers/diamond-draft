@@ -297,6 +297,32 @@ export function applyWarmupBullpen(innings: InningAssignment[]): InningAssignmen
         }),
       };
 
+      // Auto-assign catcher to Bullpen-C in warmup inning
+      const cSlot = inn.slots.find((s) => s.position === "C");
+      const catcherId = cSlot?.playerId ?? null;
+      if (catcherId) {
+        const bcSlot = result[wi].slots.find((s) => s.position === "Bullpen - C");
+        if (!bcSlot?.locked || bcSlot.playerId === catcherId) {
+          const catcherLockedToField = result[wi].slots.some(
+            (s) => s.playerId === catcherId && s.locked && s.position !== "Bullpen - C"
+          );
+          if (!catcherLockedToField) {
+            result[wi] = {
+              ...result[wi],
+              slots: result[wi].slots.map((s) => {
+                if (s.playerId === catcherId && s.position !== "Bullpen - C" && s.position !== "Bullpen - P") {
+                  return { ...s, playerId: null, locked: false };
+                }
+                if (s.position === "Bullpen - C") {
+                  return { ...s, playerId: catcherId, locked: true };
+                }
+                return s;
+              }),
+            };
+          }
+        }
+      }
+
     } else {
       // Pitcher was cleared — release Bullpen-P in N-1 if it was set as warm-up
       if (bpSlot && bpSlot.locked) {
@@ -345,11 +371,11 @@ export function mergeRosterIntoSnapshot(
 // ─── Display helpers ──────────────────────────────────────────────────────────
 
 export function formatPlayerName(player: Player): string {
-  return `${player.firstName} ${player.lastInitial} #${player.jerseyNumber}`;
+  return `${player.firstName} ${player.lastInitial}. #${player.jerseyNumber}`;
 }
 
 export function formatPlayerShort(player: Player): string {
-  return `${player.firstName} ${player.lastInitial}`;
+  return `${player.firstName} ${player.lastInitial}.`;
 }
 
 /** Get the position assigned to a player in a specific inning, or null. */
