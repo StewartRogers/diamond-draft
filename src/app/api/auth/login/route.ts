@@ -1,4 +1,12 @@
-import { authenticate, createSession, makeSessionCookie, needsSetup } from "@/lib/server/auth";
+import {
+  authenticate,
+  createSession,
+  destroySession,
+  getSessionIdFromRequest,
+  isRateLimited,
+  makeSessionCookie,
+  needsSetup,
+} from "@/lib/server/auth";
 
 export const runtime = "nodejs";
 
@@ -15,10 +23,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Username and password are required" }, { status: 400 });
   }
 
+  if (isRateLimited(username.toLowerCase().trim())) {
+    return Response.json({ error: "Too many login attempts. Try again later." }, { status: 429 });
+  }
+
   const user = await authenticate(username, password);
   if (!user) {
     return Response.json({ error: "Invalid username or password" }, { status: 401 });
   }
+
+  const oldSessionId = getSessionIdFromRequest(request);
+  if (oldSessionId) destroySession(oldSessionId);
 
   const session = createSession(user.id);
 

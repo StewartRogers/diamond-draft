@@ -6,7 +6,7 @@ import {
   getSettings,
   restoreBackup,
 } from "@/lib/server/db";
-import { requireUser } from "@/lib/server/auth";
+import { requireUser, requireSuperuser } from "@/lib/server/auth";
 import type { AppSettings, Game, Player, Season } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
 }
 
 export async function PUT(request: Request) {
-  const auth = requireUser(request);
+  const auth = requireSuperuser(request);
   if (auth instanceof Response) return auth;
   const backup = (await request.json()) as Backup;
   if (!backup || typeof backup !== "object") {
@@ -48,7 +48,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = requireUser(request);
+  const auth = requireSuperuser(request);
   if (auth instanceof Response) return auth;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   if (body?.confirm !== "wipe") {

@@ -218,10 +218,61 @@ describe("user management", () => {
   });
 
   it("deleteUser removes user and their sessions", async () => {
-    const user = await auth.createUser("todelete", "pass1234", "Delete Me", "user");
+    const user = await auth.createUser("todelete", "pass12345678", "Delete Me", "user");
     const session = auth.createSession(user.id);
     auth.deleteUser(user.id);
     expect(auth.getUser(user.id)).toBeUndefined();
     expect(auth.getSessionUser(session.id)).toBeNull();
+  });
+});
+
+describe("validatePassword", () => {
+  it("rejects passwords shorter than 8 characters", () => {
+    expect(auth.validatePassword("short")).not.toBeNull();
+    expect(auth.validatePassword("1234567")).not.toBeNull();
+  });
+
+  it("accepts passwords of 8+ characters", () => {
+    expect(auth.validatePassword("12345678")).toBeNull();
+    expect(auth.validatePassword("a-long-secure-password")).toBeNull();
+  });
+
+  it("rejects passwords exceeding max length", () => {
+    expect(auth.validatePassword("x".repeat(257))).not.toBeNull();
+  });
+});
+
+describe("isLastSuperuser", () => {
+  it("returns true when user is the only superuser", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    expect(auth.isLastSuperuser(admin!.id)).toBe(true);
+  });
+
+  it("returns false when another superuser exists", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    const other = await auth.createUser("admin2", "password1234", "Admin 2", "superuser");
+    expect(auth.isLastSuperuser(admin!.id)).toBe(false);
+    auth.deleteUser(other.id);
+  });
+});
+
+describe("createUserIfNoUsers (atomic setup)", () => {
+  it("returns null when users already exist", async () => {
+    const result = await auth.createUserIfNoUsers("newadmin", "password1234", "New Admin");
+    expect(result).toBeNull();
+  });
+});
+
+describe("rate limiting", () => {
+  it("allows requests within the limit", () => {
+    expect(auth.isRateLimited("test-key-unique")).toBe(false);
+  });
+
+  it("blocks after exceeding max attempts", () => {
+    const key = "brute-force-test";
+    for (let i = 0; i < 10; i++) {
+      auth.isRateLimited(key);
+    }
+    expect(auth.isRateLimited(key)).toBe(true);
   });
 });
