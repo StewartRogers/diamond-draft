@@ -17,11 +17,14 @@ export default function StoreProvider({ children }: { children: React.ReactNode 
   useEffect(() => {
     if (isAuthPage) return;
     if (status === "idle") {
+      let cancelled = false;
       loadAll().catch((err: Error) => {
+        if (cancelled) return;
         if (err?.message?.includes("401")) {
           router.replace("/login");
         }
       });
+      return () => { cancelled = true; };
     }
   }, [status, loadAll, isAuthPage, router]);
 

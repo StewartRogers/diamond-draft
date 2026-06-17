@@ -42,9 +42,22 @@ const MAX_PASSWORD_LENGTH = 256;
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const MAX_LOGIN_ATTEMPTS = 10;
+const MAX_RATE_LIMIT_ENTRIES = 10_000;
+const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+let lastRateLimitCleanup = Date.now();
+
+function pruneExpiredEntries(): void {
+  const now = Date.now();
+  if (now - lastRateLimitCleanup < RATE_LIMIT_CLEANUP_INTERVAL_MS && loginAttempts.size < MAX_RATE_LIMIT_ENTRIES) return;
+  lastRateLimitCleanup = now;
+  for (const [key, entry] of loginAttempts) {
+    if (now > entry.resetAt) loginAttempts.delete(key);
+  }
+}
 
 function checkRateLimit(key: string): boolean {
+  pruneExpiredEntries();
   const now = Date.now();
   const entry = loginAttempts.get(key);
   if (!entry || now > entry.resetAt) {
@@ -65,14 +78,15 @@ function getDataDir(): string {
   return process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(process.cwd(), "data");
 }
 
-let db: InstanceType<typeof Database> | null = null;
+const globalAuthDb = globalThis as typeof globalThis & { __dd_auth_db?: InstanceType<typeof Database> };
 
 function getDb() {
-  if (db) return db;
+  if (globalAuthDb.__dd_auth_db) return globalAuthDb.__dd_auth_db;
   const dataDir = getDataDir();
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
+  const db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
   db.pragma("journal_mode = WAL");
+  globalAuthDb.__dd_auth_db = db;
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -281,10 +295,12 @@ function cleanExpiredSessions(): void {
 
 // ─── Cookie helpers ──────────────────────────────────────────────────────────
 
+const SESSION_COOKIE_RE = new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`);
+
 export function getSessionIdFromRequest(request: Request): string | null {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) return null;
-  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE}=([^;]+)`));
+  const match = cookieHeader.match(SESSION_COOKIE_RE);
   return match ? match[1] : null;
 }
 

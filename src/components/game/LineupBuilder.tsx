@@ -80,17 +80,20 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   const assign = useCallback(
     (id: string, inn: number, pos: CellValue) => {
       const prev = scheduleRef.current;
-      const nextSchedule: Schedule = {};
-      for (const k of Object.keys(prev)) nextSchedule[k] = [...prev[k]];
+      const nextSchedule: Schedule = { ...prev };
 
       const curV = nextSchedule[id]?.[inn];
       if (isField(pos)) {
         const occ = batting.find((x) => x !== id && nextSchedule[x]?.[inn] === pos);
         if (occ) {
+          nextSchedule[occ] = [...nextSchedule[occ]];
           nextSchedule[occ][inn] = isField(curV) || curV === "BENCH" ? curV : "BENCH";
         }
       }
-      if (nextSchedule[id]) nextSchedule[id][inn] = pos;
+      if (nextSchedule[id]) {
+        nextSchedule[id] = [...nextSchedule[id]];
+        nextSchedule[id][inn] = pos;
+      }
       scheduleRef.current = nextSchedule;
       setSchedule(nextSchedule);
       setEdit(null);
@@ -184,6 +187,9 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   }, [game, players, leagueRules]);
 
   // ── Drag to reorder batting ───────────────────────────────────────────────
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+
   const onGrip = (e: React.PointerEvent, id: string) => {
     if (sort !== "bat") return;
     e.preventDefault();
@@ -217,6 +223,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
     const up = () => {
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
+      dragCleanupRef.current = null;
       const finalSlot = live.indexOf(id);
       me.style.transform = `translateY(${(slotYs[finalSlot] - homes[meIdx].y) / scale}px)`;
       setTimeout(() => {
@@ -229,8 +236,13 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
         requestAnimationFrame(() => requestAnimationFrame(() => { for (const h of homes) h.el.style.transition = ""; }));
       }, 190);
     };
+    dragCleanupRef.current?.();
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", up);
+    dragCleanupRef.current = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+    };
   };
 
   // ── Auto-fill ─────────────────────────────────────────────────────────────
