@@ -159,11 +159,11 @@ describe("applyWarmupBullpen — idempotent", () => {
     const once = applyWarmupBullpen(innings);
     const twice = applyWarmupBullpen(once);
 
-    // Bullpen-P is filled; Bullpen-C is never auto-assigned
+    // Bullpen-P and Bullpen-C are both filled from inning 2's pitcher/catcher
     const bp1 = twice.find((i) => i.inning === 1)!.slots.find((s) => s.position === "Bullpen - P");
     const bc1 = twice.find((i) => i.inning === 1)!.slots.find((s) => s.position === "Bullpen - C");
     expect(bp1?.playerId).toBe(pitcher.id);
-    expect(bc1?.playerId).toBeNull();
+    expect(bc1?.playerId).toBe(catcher.id);
   });
 });
 

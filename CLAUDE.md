@@ -68,9 +68,27 @@ Cell interaction model (as of latest):
 - **Clicking an empty field chip** (field view) opens `PositionPopover` — picks from eligible players.
 - **Clicking a filled chip** (field view) benches the player immediately.
 
+### Authentication (`src/lib/server/auth.ts`)
+
+All API routes (except `/api/auth/*`) require a valid session. Auth is built-in with no external dependencies:
+
+- **Password hashing**: Node's `crypto.scrypt` with per-user random salt, verified via `timingSafeEqual`.
+- **Sessions**: opaque 256-bit tokens stored in SQLite `sessions` table, 30-day expiry, httpOnly cookie (`dd_session`).
+- **Roles**: `superuser` (can manage users) and `user` (full read/write access to team data).
+- **Route guards**: `requireUser(request)` and `requireSuperuser(request)` — return the user or a 401/403 Response.
+- **First-run setup**: when `countUsers() === 0`, the app redirects to `/setup` to create the initial superuser.
+
+| File | Purpose |
+|---|---|
+| `server/auth.ts` | Password hashing, session CRUD, user CRUD, cookie helpers, route guards |
+| `src/middleware.ts` | Redirects unauthenticated page requests to `/login` (cookie-presence check) |
+
+**Auth routes**: `/api/auth/setup` (POST creates first superuser, GET checks if setup needed), `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
+**User management routes**: `/api/users` (GET list, POST create — superuser only), `/api/users/[id]` (GET, PUT role/password, DELETE — superuser only).
+
 ### API routes (`src/app/api/`)
 
-All routes use `export const runtime = "nodejs"` (required for `better-sqlite3`). They are thin: validate input, delegate to `server/db.ts`, return JSON. The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
+All routes use `export const runtime = "nodejs"` (required for `better-sqlite3`). They are thin: validate input, delegate to `server/db.ts`, return JSON. All data routes are gated by `requireUser`. The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
 
 ### Environment variables
 
