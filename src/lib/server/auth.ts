@@ -35,6 +35,29 @@ export type SafeUser = Omit<User, never>;
 const SESSION_COOKIE = "dd_session";
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SCRYPT_KEYLEN = 64;
+const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1 };
+const MAX_PASSWORD_LENGTH = 256;
+
+// ─── Rate limiting ──────────────────────────────────────────────────────────
+
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_ATTEMPTS = 10;
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const entry = loginAttempts.get(key);
+  if (!entry || now > entry.resetAt) {
+    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= MAX_LOGIN_ATTEMPTS;
+}
+
+export function isRateLimited(key: string): boolean {
+  return !checkRateLimit(key);
+}
 
 // ─── Database ────────────────────────────────────────────────────────────────
 
@@ -70,7 +93,7 @@ function getDb() {
 
 function hashPassword(password: string, salt: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    crypto.scrypt(password, salt, SCRYPT_KEYLEN, (err, key) => {
+    crypto.scrypt(password, salt, SCRYPT_KEYLEN, SCRYPT_OPTIONS, (err, key) => {
       if (err) reject(err);
       else resolve(key.toString("hex"));
     });
@@ -91,6 +114,49 @@ export function countUsers(): number {
 
 export function needsSetup(): boolean {
   return countUsers() === 0;
+}
+
+export function validatePassword(password: string): string | null {
+  if (!password || password.length < 8) return "Password must be at least 8 characters";
+  if (password.length > MAX_PASSWORD_LENGTH) return `Password must be at most ${MAX_PASSWORD_LENGTH} characters`;
+  return null;
+}
+
+export function isLastSuperuser(userId: string): boolean {
+  const row = getDb()
+    .prepare("SELECT COUNT(*) as count FROM users WHERE id != ? AND data LIKE '%\"role\":\"superuser\"%'")
+    .get(userId) as { count: number };
+  return row.count === 0;
+}
+
+export async function createUserIfNoUsers(
+  username: string,
+  password: string,
+  displayName: string
+): Promise<User | null> {
+  const database = getDb();
+  let user: User | null = null;
+  const salt = crypto.randomBytes(16).toString("hex");
+  const passwordHash = await hashPassword(password, salt);
+  const id = crypto.randomUUID();
+  const stored: StoredUser = {
+    id,
+    username: username.toLowerCase().trim(),
+    displayName: displayName.trim(),
+    role: "superuser",
+    passwordHash,
+    salt,
+    createdAt: new Date().toISOString(),
+  };
+  database.transaction(() => {
+    const count = database.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
+    if (count.count > 0) return;
+    database
+      .prepare("INSERT INTO users (id, username, data) VALUES (?, ?, ?)")
+      .run(stored.id, stored.username, JSON.stringify(stored));
+    user = toSafeUser(stored);
+  })();
+  return user;
 }
 
 export async function createUser(
@@ -162,11 +228,18 @@ export function setUserRole(userId: string, role: UserRole): boolean {
 
 // ─── Authentication ──────────────────────────────────────────────────────────
 
+const DUMMY_SALT = crypto.randomBytes(16).toString("hex");
+const DUMMY_HASH = crypto.randomBytes(SCRYPT_KEYLEN).toString("hex");
+
 export async function authenticate(username: string, password: string): Promise<User | null> {
   const row = getDb()
     .prepare("SELECT data FROM users WHERE username = ?")
     .get(username.toLowerCase().trim()) as { data: string } | undefined;
-  if (!row) return null;
+  if (!row) {
+    // Perform a dummy hash to prevent timing-based username enumeration
+    await verifyPassword(password, DUMMY_SALT, DUMMY_HASH);
+    return null;
+  }
   const user = JSON.parse(row.data) as StoredUser;
   const valid = await verifyPassword(password, user.salt, user.passwordHash);
   if (!valid) return null;

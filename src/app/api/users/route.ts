@@ -1,4 +1,4 @@
-import { requireSuperuser, getAllUsers, createUser } from "@/lib/server/auth";
+import { requireSuperuser, getAllUsers, createUser, validatePassword } from "@/lib/server/auth";
 import type { UserRole } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -29,18 +29,19 @@ export async function POST(request: Request) {
   if (!username || username.length < 3) {
     return Response.json({ error: "Username must be at least 3 characters" }, { status: 400 });
   }
-  if (!password || password.length < 6) {
-    return Response.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+  const pwError = validatePassword(password);
+  if (pwError) {
+    return Response.json({ error: pwError }, { status: 400 });
   }
 
   try {
     const user = await createUser(username, password, displayName || username, role);
     return Response.json(user, { status: 201 });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "Unknown error";
+    const msg = e instanceof Error ? e.message : "";
     if (msg.includes("UNIQUE constraint")) {
       return Response.json({ error: "Username already exists" }, { status: 409 });
     }
-    return Response.json({ error: msg }, { status: 500 });
+    return Response.json({ error: "Failed to create user" }, { status: 500 });
   }
 }
