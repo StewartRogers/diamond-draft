@@ -24,14 +24,15 @@ const DEFAULT_ROSTER_SEED = [
   { firstName: "Ira", lastInitial: "I", jerseyNumber: "9" },
 ] as const;
 
-let db: InstanceType<typeof Database> | null = null;
+const globalDataDb = globalThis as typeof globalThis & { __dd_data_db?: InstanceType<typeof Database> };
 
 function getDb() {
-  if (db) return db;
+  if (globalDataDb.__dd_data_db) return globalDataDb.__dd_data_db;
   const dataDir = getDataDir();
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
+  const db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
   db.pragma("journal_mode = WAL");
+  globalDataDb.__dd_data_db = db;
   db.exec(`
     CREATE TABLE IF NOT EXISTS players (
       id TEXT PRIMARY KEY,
