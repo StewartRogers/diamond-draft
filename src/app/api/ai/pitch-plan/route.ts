@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { getGame, getAllPlayers } from "@/lib/server/db";
+import { requireUser } from "@/lib/server/auth";
 import type { GamePitchCatchAssignment } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,6 +22,8 @@ function makeModel() {
 }
 
 export async function POST(request: Request) {
+  const auth = requireUser(request);
+  if (auth instanceof Response) return auth;
   const body = (await request.json()) as PlanRequest;
   const gameId = typeof body.gameId === "string" ? body.gameId.slice(0, 128) : null;
   const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 500) : "";

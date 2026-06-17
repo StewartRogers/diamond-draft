@@ -1,9 +1,12 @@
 import { deleteSeason, getSeason, saveSeason } from "@/lib/server/db";
+import { requireUser } from "@/lib/server/auth";
 import type { Season } from "@/lib/types";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireUser(request);
+  if (auth instanceof Response) return auth;
   const { id } = await params;
   const season = getSeason(id);
   if (!season) return new Response("Not found", { status: 404 });
@@ -11,6 +14,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireUser(request);
+  if (auth instanceof Response) return auth;
   const { id } = await params;
   const season = (await request.json()) as Season;
   if (!season || typeof season !== "object") {
@@ -20,7 +25,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   return Response.json({ ...season, id });
 }
 
-export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = requireUser(request);
+  if (auth instanceof Response) return auth;
   const { id } = await params;
   deleteSeason(id);
   return new Response(null, { status: 204 });
