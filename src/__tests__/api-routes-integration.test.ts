@@ -13,6 +13,12 @@ import type { Game, Player } from "@/lib/types";
 import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 import { makePlayer, makeInnings, resetPlayerSeq } from "./helpers";
 
+// Mock auth so route guards pass without a real session.
+vi.mock("@/lib/server/auth", () => ({
+  requireUser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
+  requireSuperuser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
+}));
+
 // Mock the Gemini client before any route import pulls it in.
 const generateContent = vi.fn();
 vi.mock("@google/genai", () => ({
@@ -139,7 +145,7 @@ describe("/api/games/[id]", () => {
 describe("/api/state (backup / wipe)", () => {
   it("GET exports players, games, seasons, and settings", async () => {
     db.saveGame(makeGame("state-game"));
-    const res = await stateRoute.GET();
+    const res = await stateRoute.GET(jsonRequest("GET", null));
     const body = await res.json();
     expect(body.games.some((g: Game) => g.id === "state-game")).toBe(true);
     expect(Array.isArray(body.players)).toBe(true);

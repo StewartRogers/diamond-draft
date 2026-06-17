@@ -1,15 +1,31 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
+
+const AUTH_PAGES = ["/login", "/setup"];
 
 export default function StoreProvider({ children }: { children: React.ReactNode }) {
   const loadAll = useDiamondDraftStore((s) => s.loadAll);
   const status = useDiamondDraftStore((s) => s.status);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const isAuthPage = AUTH_PAGES.includes(pathname);
 
   useEffect(() => {
-    if (status === "idle") loadAll();
-  }, [status, loadAll]);
+    if (isAuthPage) return;
+    if (status === "idle") {
+      loadAll().catch((err: Error) => {
+        if (err?.message?.includes("401")) {
+          router.replace("/login");
+        }
+      });
+    }
+  }, [status, loadAll, isAuthPage, router]);
+
+  if (isAuthPage) return <>{children}</>;
 
   if (status === "loading" || status === "idle") {
     return (

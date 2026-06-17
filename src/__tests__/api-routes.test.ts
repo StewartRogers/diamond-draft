@@ -38,6 +38,11 @@ const mockDb: MockDb = {
   seasons: new Map(),
 };
 
+vi.mock("@/lib/server/auth", () => ({
+  requireUser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
+  requireSuperuser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
+}));
+
 vi.mock("@/lib/server/db", () => ({
   // Games
   getAllGames: vi.fn(() => Array.from(mockDb.games.values())),
@@ -109,7 +114,8 @@ beforeEach(() => {
 
 describe("GET /api/games", () => {
   it("returns an empty array when no games exist", async () => {
-    const res = await gamesGET();
+    const req = new Request("http://localhost/api/games");
+    const res = await gamesGET(req);
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data).toEqual([]);
@@ -121,7 +127,8 @@ describe("GET /api/games", () => {
     mockDb.games.set("game-1", game1);
     mockDb.games.set("game-2", game2);
 
-    const res = await gamesGET();
+    const req = new Request("http://localhost/api/games");
+    const res = await gamesGET(req);
     const data = await res.json();
     expect(data).toHaveLength(2);
     const ids = data.map((g: Game) => g.id);
@@ -269,7 +276,7 @@ describe("db mock — data integrity through API route round-trips", () => {
     expect(mockDb.games.has("cycle-game")).toBe(true);
 
     // Read via GET all
-    const getAllRes = await gamesGET();
+    const getAllRes = await gamesGET(new Request("http://localhost/api/games"));
     const allGames = await getAllRes.json();
     expect(allGames.some((g: Game) => g.id === "cycle-game")).toBe(true);
 
@@ -279,7 +286,7 @@ describe("db mock — data integrity through API route round-trips", () => {
     expect(mockDb.games.has("cycle-game")).toBe(false);
 
     // Confirm gone
-    const afterRes = await gamesGET();
+    const afterRes = await gamesGET(new Request("http://localhost/api/games"));
     const afterGames = await afterRes.json();
     expect(afterGames.some((g: Game) => g.id === "cycle-game")).toBe(false);
   });
