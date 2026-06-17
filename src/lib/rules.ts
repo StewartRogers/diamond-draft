@@ -424,14 +424,32 @@ export function validateInning(
     }
   }
 
+  // ── Back-to-back bench for benched players ──────────────────────────────────
+  // Bench slots are excluded from activeSlots (they are passive bookkeeping),
+  // so the per-slot bench check above only catches Bullpen players. We need a
+  // separate pass for players explicitly on the Bench.
+  const benchSlots = assignedSlots.filter((s) => s.position === "Bench");
+  for (const slot of benchSlots) {
+    const playerId = slot.playerId!;
+    const player = playerMap.get(playerId);
+    if (!player) continue;
+    const consecutive = consecutiveBenchInnings(playerId, allInnings, inning, overrides);
+    if (rules.maxConsecutiveBench > 0 && consecutive > rules.maxConsecutiveBench) {
+      violations.push({
+        code: "BACK_TO_BACK_BENCH",
+        severity: "error",
+        message: `Inning ${inning}: ${player.firstName} ${player.lastInitial} has been on bench ${consecutive} inning(s) in a row (max ${rules.maxConsecutiveBench}).`,
+        playerId,
+        inning,
+      });
+    }
+  }
+
   // ── Players with no slot in this inning (check availability) ─────────────
   const assignedPlayerIds = new Set(assignedSlots.map((s) => s.playerId));
   for (const player of players) {
     if (assignedPlayerIds.has(player.id)) continue;
     if (!isPlayerAvailableInInning(player.id, inning, overrides)) continue;
-    // Active player has no slot — not an error if bench is intentional, but
-    // flag missing field position if they should be in the field.
-    // (Fair play time is checked at the full-game level below.)
   }
 
   // Suppress unused variable warning

@@ -325,11 +325,12 @@ describe("applyWarmupBullpen", () => {
     expect(bp?.locked).toBe(true);
   });
 
-  it("does NOT place inning-2 catcher in Bullpen-C of inning 1", () => {
+  it("places inning-2 catcher in Bullpen-C of inning 1 (locked)", () => {
     const innings = setupTwoInnings("pitcher-X", "catcher-Y");
     const result = applyWarmupBullpen(innings);
     const bc = result[0].slots.find((s) => s.position === "Bullpen - C");
-    expect(bc?.playerId).toBeNull();
+    expect(bc?.playerId).toBe("catcher-Y");
+    expect(bc?.locked).toBe(true);
   });
 
   it("removes pitcher from any other non-locked slot in inning 1", () => {
