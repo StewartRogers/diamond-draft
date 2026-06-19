@@ -230,7 +230,7 @@ export function GridView(props: GridViewProps) {
 const MOBILE_COLS = 3;
 
 export function MobileGridView(props: GridViewProps) {
-  const { rows, byId, battingSlot, schedule, numInnings, scratchedIds,
+  const { rows, byId, battingSlot, schedule, numInnings, scratchedIds, sort,
     editKey, onCell, onFieldPerInning } = props;
   const [page, setPage] = useState(0);
   const maxPage = Math.max(0, Math.ceil(numInnings / MOBILE_COLS) - 1);
