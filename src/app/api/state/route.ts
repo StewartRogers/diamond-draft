@@ -19,26 +19,22 @@ type Backup = {
 };
 
 export async function GET(request: Request) {
-  const auth = requireUser(request);
+  const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
-  return Response.json({
-    players: getAllPlayers(),
-    games: getAllGames(),
-    seasons: getAllSeasons(),
-    settings: getSettings(),
-  } satisfies Backup);
+  const [players, games, seasons, settings] = await Promise.all([
+    getAllPlayers(), getAllGames(), getAllSeasons(), getSettings(),
+  ]);
+  return Response.json({ players, games, seasons, settings } satisfies Backup);
 }
 
 export async function PUT(request: Request) {
-  const auth = requireSuperuser(request);
+  const auth = await requireSuperuser(request);
   if (auth instanceof Response) return auth;
   const backup = (await request.json()) as Backup;
   if (!backup || typeof backup !== "object") {
     return new Response("Invalid backup body", { status: 400 });
   }
-  // Restore atomically — wipe + writes happen in one transaction so a
-  // mid-restore failure never leaves the database empty.
-  restoreBackup({
+  await restoreBackup({
     players: Array.isArray(backup.players) ? backup.players : [],
     games: Array.isArray(backup.games) ? backup.games : [],
     seasons: Array.isArray(backup.seasons) ? backup.seasons : [],
@@ -48,12 +44,12 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = requireSuperuser(request);
+  const auth = await requireSuperuser(request);
   if (auth instanceof Response) return auth;
   const body = await request.json().catch(() => ({})) as Record<string, unknown>;
   if (body?.confirm !== "wipe") {
     return new Response("Missing confirmation: send { confirm: 'wipe' }", { status: 400 });
   }
-  clearAllData();
+  await clearAllData();
   return Response.json({ ok: true });
 }

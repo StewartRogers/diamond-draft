@@ -4,13 +4,11 @@ import { requireUser } from "@/lib/server/auth";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const auth = requireUser(request);
+  const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
-  return Response.json({
-    players: getAllPlayers(),
-    games: getAllGames(),
-    seasons: getAllSeasons(),
-    settings: getSettings(),
-  });
+  const [players, games, seasons, settings] = await Promise.all([
+    getAllPlayers(), getAllGames(), getAllSeasons(), getSettings(),
+  ]);
+  return Response.json({ players, games, seasons, settings });
 }
 
