@@ -11,7 +11,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  if (needsSetup()) {
+  if (await needsSetup()) {
     return Response.json({ error: "Setup required" }, { status: 403 });
   }
 
@@ -33,9 +33,9 @@ export async function POST(request: Request) {
   }
 
   const oldSessionId = getSessionIdFromRequest(request);
-  if (oldSessionId) destroySession(oldSessionId);
+  if (oldSessionId) await destroySession(oldSessionId);
 
-  const session = createSession(user.id);
+  const session = await createSession(user.id);
 
   return Response.json({ user }, {
     headers: { "Set-Cookie": makeSessionCookie(session.id) },

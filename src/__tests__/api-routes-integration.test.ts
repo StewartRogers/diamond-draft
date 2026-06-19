@@ -15,8 +15,8 @@ import { makePlayer, makeInnings, resetPlayerSeq } from "./helpers";
 
 // Mock auth so route guards pass without a real session.
 vi.mock("@/lib/server/auth", () => ({
-  requireUser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
-  requireSuperuser: vi.fn(() => ({ id: "test-user", username: "admin", role: "superuser" })),
+  requireUser: vi.fn(async () => ({ id: "test-user", username: "admin", role: "superuser" })),
+  requireSuperuser: vi.fn(async () => ({ id: "test-user", username: "admin", role: "superuser" })),
 }));
 
 // Mock the Gemini client before any route import pulls it in.
@@ -86,7 +86,7 @@ describe("POST /api/players", () => {
     const player = makePlayer({ firstName: "Api" });
     const res = await playersRoute.POST(jsonRequest("POST", player));
     expect(res.status).toBe(201);
-    expect(db.getPlayer(player.id)).toEqual(player);
+    expect(await db.getPlayer(player.id)).toEqual(player);
   });
 
   it("rejects a player without an id", async () => {
@@ -103,29 +103,29 @@ describe("/api/players/[id]", () => {
 
   it("PUT updates a player, forcing the URL id over the body id", async () => {
     const player = makePlayer({ firstName: "Url" });
-    db.savePlayer(player);
+    await db.savePlayer(player);
     const res = await playerIdRoute.PUT(
       jsonRequest("PUT", { ...player, id: "spoofed-id", firstName: "Renamed" }),
       params(player.id)
     );
     expect(res.status).toBe(200);
-    expect(db.getPlayer(player.id)?.firstName).toBe("Renamed");
-    expect(db.getPlayer("spoofed-id")).toBeUndefined();
+    expect((await db.getPlayer(player.id))?.firstName).toBe("Renamed");
+    expect(await db.getPlayer("spoofed-id")).toBeUndefined();
   });
 
   it("DELETE removes the player and returns 204", async () => {
     const player = makePlayer();
-    db.savePlayer(player);
+    await db.savePlayer(player);
     const res = await playerIdRoute.DELETE(jsonRequest("DELETE", null), params(player.id));
     expect(res.status).toBe(204);
-    expect(db.getPlayer(player.id)).toBeUndefined();
+    expect(await db.getPlayer(player.id)).toBeUndefined();
   });
 });
 
 describe("/api/games/[id]", () => {
   it("GET round-trips a saved game", async () => {
     const game = makeGame("api-game");
-    db.saveGame(game);
+    await db.saveGame(game);
     const res = await gameIdRoute.GET(jsonRequest("GET", null), params("api-game"));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(game);
@@ -144,7 +144,7 @@ describe("/api/games/[id]", () => {
 
 describe("/api/state (backup / wipe)", () => {
   it("GET exports players, games, seasons, and settings", async () => {
-    db.saveGame(makeGame("state-game"));
+    await db.saveGame(makeGame("state-game"));
     const res = await stateRoute.GET(jsonRequest("GET", null));
     const body = await res.json();
     expect(body.games.some((g: Game) => g.id === "state-game")).toBe(true);
@@ -163,9 +163,9 @@ describe("/api/state (backup / wipe)", () => {
       })
     );
     expect(res.status).toBe(200);
-    expect(db.getAllPlayers()).toEqual([player]);
-    expect(db.getGame("state-game")).toBeUndefined();
-    expect(db.getSettings().teamName).toBe("Restored FC");
+    expect(await db.getAllPlayers()).toEqual([player]);
+    expect(await db.getGame("state-game")).toBeUndefined();
+    expect((await db.getSettings()).teamName).toBe("Restored FC");
   });
 
   it("DELETE requires the wipe confirmation token", async () => {
@@ -174,10 +174,10 @@ describe("/api/state (backup / wipe)", () => {
   });
 
   it("DELETE wipes all data when confirmed", async () => {
-    db.saveGame(makeGame("wipe-me"));
+    await db.saveGame(makeGame("wipe-me"));
     const res = await stateRoute.DELETE(jsonRequest("DELETE", { confirm: "wipe" }));
     expect(res.status).toBe(200);
-    expect(db.getGame("wipe-me")).toBeUndefined();
+    expect(await db.getGame("wipe-me")).toBeUndefined();
   });
 });
 
@@ -197,7 +197,7 @@ describe("POST /api/ai/pitch-plan", () => {
   it("filters hallucinated player ids and out-of-range innings from the model output", async () => {
     const roster: Player[] = [makePlayer({ firstName: "Real" })];
     const game = makeGame("ai-game", { rosterSnapshot: roster });
-    db.saveGame(game);
+    await db.saveGame(game);
 
     generateContent.mockResolvedValueOnce({
       text: JSON.stringify({
@@ -222,7 +222,7 @@ describe("POST /api/ai/pitch-plan", () => {
 
   it("returns 502 when the model output is not valid JSON", async () => {
     const game = makeGame("ai-game-2", { rosterSnapshot: [makePlayer()] });
-    db.saveGame(game);
+    await db.saveGame(game);
     generateContent.mockResolvedValueOnce({ text: "not json{" });
 
     const res = await pitchPlanRoute.POST(

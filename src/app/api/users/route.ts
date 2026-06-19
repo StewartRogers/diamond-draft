@@ -4,14 +4,14 @@ import type { UserRole } from "@/lib/server/auth";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const result = requireSuperuser(request);
+  const result = await requireSuperuser(request);
   if (result instanceof Response) return result;
 
-  return Response.json(getAllUsers());
+  return Response.json(await getAllUsers());
 }
 
 export async function POST(request: Request) {
-  const result = requireSuperuser(request);
+  const result = await requireSuperuser(request);
   if (result instanceof Response) return result;
 
   const body = (await request.json()) as {
