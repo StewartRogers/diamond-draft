@@ -25,10 +25,10 @@ export function getSharedClient(cacheKey: string): Client {
       authToken: process.env.TURSO_AUTH_TOKEN,
     });
   } else {
-    const dataDir = process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(process.cwd(), "data");
+    const dataDir = process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(/*turbopackIgnore: true*/ process.cwd(), "data");
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     client = createClient({
-      url: `file:${path.join(dataDir, "diamond-draft.sqlite3")}`,
+      url: `file:${path.join(/*turbopackIgnore: true*/ dataDir, "diamond-draft.sqlite3")}`,
     });
   }
 
