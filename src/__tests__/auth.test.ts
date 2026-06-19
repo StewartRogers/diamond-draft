@@ -211,10 +211,10 @@ describe("user management", () => {
 
   it("setUserRole changes role", async () => {
     const user = await auth.authenticate("coach2", "newpass99");
-    await auth.setUserRole(user!.id, "superuser");
+    expect(await auth.setUserRole(user!.id, "superuser")).toBe("ok");
     const updated = await auth.getUser(user!.id);
     expect(updated!.role).toBe("superuser");
-    await auth.setUserRole(user!.id, "user");
+    expect(await auth.setUserRole(user!.id, "user")).toBe("ok");
   });
 
   it("deleteUser removes user and their sessions", async () => {
@@ -253,6 +253,21 @@ describe("isLastSuperuser", () => {
     const other = await auth.createUser("admin2", "password1234", "Admin 2", "superuser");
     expect(await auth.isLastSuperuser(admin!.id)).toBe(false);
     await auth.deleteUser(other.id);
+  });
+});
+
+describe("setUserRole atomicity", () => {
+  it("prevents demoting the last superuser", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    const result = await auth.setUserRole(admin!.id, "user");
+    expect(result).toBe("last_superuser");
+    const user = await auth.getUser(admin!.id);
+    expect(user!.role).toBe("superuser");
+  });
+
+  it("returns not_found for nonexistent user", async () => {
+    const result = await auth.setUserRole("nonexistent-id", "user");
+    expect(result).toBe("not_found");
   });
 });
 

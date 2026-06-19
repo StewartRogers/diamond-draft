@@ -1,4 +1,4 @@
-import { requireSuperuser, deleteUser, resetPassword, setUserRole, getUser, validatePassword, isLastSuperuser } from "@/lib/server/auth";
+import { requireSuperuser, deleteUser, resetPassword, setUserRole, getUser, validatePassword } from "@/lib/server/auth";
 import type { UserRole } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -30,11 +30,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   if (body.role && (body.role === "superuser" || body.role === "user")) {
-    if (body.role === "user" && (await isLastSuperuser(id))) {
+    const roleResult = await setUserRole(id, body.role);
+    if (roleResult === "last_superuser") {
       return Response.json({ error: "Cannot demote the last admin" }, { status: 400 });
     }
-    const ok = await setUserRole(id, body.role);
-    if (!ok) return Response.json({ error: "User not found" }, { status: 404 });
+    if (roleResult === "not_found") {
+      return Response.json({ error: "User not found" }, { status: 404 });
+    }
   }
 
   const updated = await getUser(id);

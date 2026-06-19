@@ -124,8 +124,13 @@ export async function countUsers(): Promise<number> {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+let setupComplete = false;
+
 export async function needsSetup(): Promise<boolean> {
-  return (await countUsers()) === 0;
+  if (setupComplete) return false;
+  const result = (await countUsers()) === 0;
+  if (!result) setupComplete = true;
+  return result;
 }
 
 export function validatePassword(password: string): string | null {
@@ -227,32 +232,45 @@ export async function deleteUser(id: string): Promise<void> {
 
 export async function resetPassword(userId: string, newPassword: string): Promise<boolean> {
   const db = await ensureSchema();
-  const result = await db.execute({ sql: "SELECT data FROM users WHERE id = ?", args: [userId] });
-  const row = result.rows[0];
-  if (!row) return false;
-  const user = JSON.parse(row.data as string) as StoredUser;
   const salt = crypto.randomBytes(16).toString("hex");
   const passwordHash = await hashPassword(newPassword, salt);
-  const updated: StoredUser = { ...user, salt, passwordHash };
-  await db.batch([
-    { sql: "UPDATE users SET data = ? WHERE id = ?", args: [JSON.stringify(updated), userId] },
+  const results = await db.batch([
+    {
+      sql: `UPDATE users SET data = json_set(json_set(data, '$.passwordHash', ?), '$.salt', ?)
+            WHERE id = ?`,
+      args: [passwordHash, salt, userId],
+    },
     { sql: "DELETE FROM sessions WHERE userId = ?", args: [userId] },
   ], "write");
-  return true;
+  return (results[0]?.rowsAffected ?? 0) > 0;
 }
 
-export async function setUserRole(userId: string, role: UserRole): Promise<boolean> {
+export async function setUserRole(
+  userId: string,
+  role: UserRole
+): Promise<"ok" | "not_found" | "last_superuser"> {
   const db = await ensureSchema();
-  const result = await db.execute({ sql: "SELECT data FROM users WHERE id = ?", args: [userId] });
-  const row = result.rows[0];
-  if (!row) return false;
-  const user = JSON.parse(row.data as string) as StoredUser;
-  const updated: StoredUser = { ...user, role };
-  await db.execute({
-    sql: "UPDATE users SET data = ? WHERE id = ?",
-    args: [JSON.stringify(updated), userId],
+
+  if (role === "user") {
+    // Atomic: only demote if not the last superuser
+    const result = await db.execute({
+      sql: `UPDATE users SET data = json_set(data, '$.role', ?)
+            WHERE id = ? AND (
+              SELECT COUNT(*) FROM users
+              WHERE json_extract(data, '$.role') = 'superuser'
+            ) > 1`,
+      args: [role, userId],
+    });
+    if ((result.rowsAffected ?? 0) > 0) return "ok";
+    const exists = await db.execute({ sql: "SELECT 1 FROM users WHERE id = ?", args: [userId] });
+    return exists.rows.length > 0 ? "last_superuser" : "not_found";
+  }
+
+  const result = await db.execute({
+    sql: "UPDATE users SET data = json_set(data, '$.role', ?) WHERE id = ?",
+    args: [role, userId],
   });
-  return true;
+  return (result.rowsAffected ?? 0) > 0 ? "ok" : "not_found";
 }
 
 // ─── Authentication ──────────────────────────────────────────────────────────
@@ -281,7 +299,7 @@ export async function authenticate(username: string, password: string): Promise<
 
 export async function createSession(userId: string): Promise<AuthSession> {
   await cleanExpiredSessions();
-  const db = await ensureSchema();
+  const db = getSharedClient("__dd_auth_db");
   const id = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_MAX_AGE_MS;
   await db.execute({
