@@ -25,14 +25,14 @@ npx vitest run src/__tests__/rules.test.ts
 
 ### Data flow
 
-The app is **local-first**: all data lives in `data/diamond-draft.sqlite3`. There is no backend beyond the Next.js API routes running in the same process.
+Data lives in SQLite — either a local file (`data/diamond-draft.sqlite3`) or a remote Turso database when deployed to Vercel. There is no backend beyond the Next.js API routes running in the same process.
 
 ```
 Browser (React + Zustand)
   └─ src/lib/store.ts          ← all client state; calls api.ts fetch wrappers
        └─ src/lib/api.ts        ← thin fetch wrappers for the REST API
             └─ src/app/api/     ← Next.js route handlers (runtime: "nodejs")
-                 └─ src/lib/server/db.ts  ← better-sqlite3; stores everything as JSON blobs
+                 └─ src/lib/server/db.ts  ← @libsql/client; stores everything as JSON blobs
 ```
 
 The Zustand store (`store.ts`) is the single source of truth on the client. It holds players, games, seasons, and settings. Components read from it with selectors; mutations go through store actions which call `api.ts` and update local state. The store uses `zustand/middleware/immer` — actions mutate a mutable `draft` object rather than returning new state.
@@ -56,8 +56,10 @@ The Zustand store (`store.ts`) is the single source of truth on the client. It h
 | `autoLineup.ts` | Two-phase greedy solver. Phase 1: hard constraints (eligibility, limits, availability, locked slots). Phase 2: soft scoring (fair play, bench distribution, position variety). Works inning-by-inning, carrying forward cumulative `PlayerState`. |
 | `db.ts` | Client-side `FullBackup` type and `requestJson` fetch helper used for backup export/import |
 | `season.ts` | Season and player factory helpers |
-| `server/db.ts` | SQLite access (server-only). Seeds a default 9-player roster on first run. `DIAMOND_DRAFT_DATA_DIR` env var overrides the data directory. |
-| `server/auth.ts` | Password hashing, session CRUD, user CRUD, rate limiting, route guards (server-only). Uses its own DB handle (`__dd_auth_db`) to the same SQLite file. |
+| `server/db.ts` | SQLite access via @libsql/client (server-only). Seeds a default 9-player roster on first run. `DIAMOND_DRAFT_DATA_DIR` env var overrides the data directory. |
+| `server/auth.ts` | Password hashing, session CRUD, user CRUD, rate limiting, route guards (server-only). |
+| `server/connection.ts` | Shared @libsql/client factory — creates local (`file:`) or remote (Turso `libsql://`) clients. Handles WAL mode for local SQLite. |
+| `server/env.ts` | Vercel environment detection (`getVercelEnv`) and env var validation (`validateEnv`). |
 
 ### Lineup builder UI (`src/components/game/lineup/`)
 
@@ -92,14 +94,16 @@ All API routes (except `/api/auth/*`) require a valid session. Auth is built-in 
 
 ### API routes (`src/app/api/`)
 
-All routes use `export const runtime = "nodejs"` (required for `better-sqlite3`). They are thin: validate input, delegate to `server/db.ts`, return JSON. All data routes are gated by `requireUser`. Additional routes: `/api/bootstrap` returns all data for initial client load; `/api/state` does the same (used for backup export). The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
+All routes use `export const runtime = "nodejs"` (required for `@libsql/client`). They are thin: validate input, delegate to `server/db.ts`, return JSON. All data routes are gated by `requireUser`. Additional routes: `/api/bootstrap` returns all data for initial client load; `/api/state` does the same (used for backup export); `/api/env` returns Vercel environment info (superuser only). The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
 
-**Two DB handles, one file:** `server/db.ts` and `server/auth.ts` each maintain separate `better-sqlite3` instances (`__dd_data_db` and `__dd_auth_db`) pointing at the same `diamond-draft.sqlite3`. Both are cached on `globalThis` to survive Next.js hot reload.
+**Shared connection factory:** `server/connection.ts` provides `getSharedClient(cacheKey)` which creates `@libsql/client` instances — local `file:` URLs when `TURSO_DATABASE_URL` is absent, or remote Turso connections when it is set. Clients are cached on `globalThis` to survive Next.js hot reload. `server/db.ts` and `server/auth.ts` each use a separate cache key (`__dd_data_db` and `__dd_auth_db`) but point at the same database.
 
 ### Environment variables
 
 | Variable | Purpose |
 |---|---|
+| `TURSO_DATABASE_URL` | Turso database URL (`libsql://...`) — when absent, uses local SQLite file |
+| `TURSO_AUTH_TOKEN` | Turso auth token (required when `TURSO_DATABASE_URL` is set) |
 | `GEMINI_API_KEY` | Required for AI pitch-plan feature only |
 | `GEMINI_MODEL` | Gemini model override (default `gemini-2.5-flash-lite`) |
 | `ALLOWED_DEV_ORIGINS` | Comma-separated LAN IPs allowed to access the dev server (e.g. `10.0.0.73`) |

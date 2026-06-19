@@ -1,6 +1,6 @@
 # Diamond Draft
 
-A local-first web app for youth baseball coaches to build rule-compliant game lineups. Runs entirely on your own machine — no account, no cloud, no subscription required.
+A web app for youth baseball coaches to build rule-compliant game lineups. Runs locally with SQLite or deploys to the cloud with Turso on Vercel.
 
 ## Features
 
@@ -31,8 +31,14 @@ All rules are configurable in Settings and enforced by both auto-fill and the va
 | Position eligibility enforcement | On |
 | Balanced field time across fully-available players | On |
 
+### Authentication
+- Built-in auth with no external dependencies — password hashing via Node.js `crypto.scrypt`
+- First-run setup creates an initial superuser; subsequent users are managed by superusers
+- Session-based authentication with httpOnly cookies (30-day expiry)
+- Two roles: `superuser` (can manage users) and `user` (full read/write access to team data)
+
 ### Data & backup
-- All data stored locally in SQLite (`data/diamond-draft.sqlite3`) — no internet required
+- SQLite storage — local file (`data/diamond-draft.sqlite3`) or remote via Turso
 - Full JSON backup export and import from the Settings page
 - Seasons group games; statistics like season pitching totals carry across games
 
@@ -49,7 +55,7 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:4000](http://localhost:4000). The app seeds a sample 9-player roster on first run.
+Open [http://localhost:4000](http://localhost:4000). On first run, the app creates a setup page to create an initial superuser account and seeds a sample 9-player roster.
 
 ### Accessing from another device on your network (phone, tablet)
 
@@ -69,12 +75,27 @@ npm run build
 npm start          # serves on port 4000
 ```
 
+### Deploy to Vercel + Turso
+
+The app can be deployed to Vercel using [Turso](https://turso.tech/) for managed SQLite storage.
+
+1. Create a Turso database and get your credentials
+2. Set the following environment variables in Vercel:
+   - `TURSO_DATABASE_URL` — your Turso database URL (`libsql://...`)
+   - `TURSO_AUTH_TOKEN` — your Turso auth token
+3. Deploy via `git push` or the Vercel dashboard
+4. On first visit, complete the setup page to create a superuser
+
+Use the built-in backup export/import feature to migrate data between local and cloud.
+
 ### Environment variables
 
 Copy `.env.example` to `.env` and fill in as needed:
 
 | Variable | Required | Purpose |
 |---|---|---|
+| `TURSO_DATABASE_URL` | On Vercel | Turso database URL (`libsql://...`) — when absent, uses local SQLite |
+| `TURSO_AUTH_TOKEN` | On Vercel | Turso auth token |
 | `GEMINI_API_KEY` | No | Enables the AI pitcher/catcher planning feature (Google Gemini) |
 | `GEMINI_MODEL` | No | Override the Gemini model (default: `gemini-2.5-flash-lite`) |
 | `ALLOWED_DEV_ORIGINS` | No | Comma-separated LAN IPs allowed to reach the dev server |
@@ -89,7 +110,7 @@ Browser (React 19 + Zustand)
   └─ src/lib/store.ts        — all client state; calls REST API via api.ts
        └─ src/lib/api.ts      — thin fetch wrappers
             └─ src/app/api/   — Next.js route handlers (runtime: "nodejs")
-                 └─ src/lib/server/db.ts  — better-sqlite3; stores all entities as JSON blobs
+                 └─ src/lib/server/db.ts  — @libsql/client; stores all entities as JSON blobs
 ```
 
 ### Key source locations
@@ -101,15 +122,18 @@ Browser (React 19 + Zustand)
 | `src/lib/rules.ts` | Violation checker — `validateInning`, `validateGame`, `getComplianceSummary` |
 | `src/lib/autoLineup.ts` | Two-phase greedy solver (hard constraints → soft scoring) |
 | `src/lib/store.ts` | Zustand store — single source of truth on the client |
-| `src/lib/server/db.ts` | SQLite access (server-only; seeds default roster on first run) |
+| `src/lib/server/db.ts` | SQLite access via @libsql/client (server-only; seeds default roster on first run) |
+| `src/lib/server/auth.ts` | Built-in authentication — password hashing, sessions, user CRUD, route guards |
+| `src/lib/server/connection.ts` | Shared @libsql/client factory — local SQLite or remote Turso |
+| `src/lib/server/env.ts` | Vercel environment detection and env var validation |
 | `src/components/game/LineupBuilder.tsx` | Main interactive lineup editor |
 | `src/components/game/lineup/` | Grid view, field view, popovers, shared types and adapters |
-| `src/app/api/` | REST endpoints for players, games, seasons, settings, and AI pitch plan |
+| `src/app/api/` | REST endpoints for players, games, seasons, settings, auth, users, and AI pitch plan |
 | `src/__tests__/` | Vitest unit suite; `COVERAGE.md` maps coverage status |
 
 ### Data model
 
-SQLite stores each entity (`players`, `games`, `seasons`, `settings`) as a single JSON blob in a two-column table (`id`, `data`). There is no ORM and no migrations — schema changes are handled by re-seeding or manual migration of the JSON.
+SQLite (via `@libsql/client`) stores each entity (`players`, `games`, `seasons`, `settings`) as a single JSON blob in a two-column table (`id`, `data`). Auth tables (`users`, `sessions`) live in the same database. There is no ORM and no migrations — schema changes are handled by re-seeding or manual migration of the JSON.
 
 The lineup builder maintains a local `Schedule` (`Record<playerId, CellValue[]>`) in React state, converted to/from the `InningAssignment[]` model via `gameToSchedule` / `scheduleToInnings` in `src/components/game/lineup/shared.ts`. Changes persist immediately via `updateGameInnings`.
 

@@ -20,6 +20,7 @@ const DEFAULT_ROSTER_SEED = [
 
 const globalDataDb = globalThis as typeof globalThis & {
   __dd_data_db_initialized?: boolean;
+  __dd_data_db_seeded?: boolean;
 };
 
 async function ensureSchema(): Promise<Client> {
@@ -53,10 +54,14 @@ async function ensureSchema(): Promise<Client> {
 }
 
 async function seedDefaultPlayersIfNeeded(): Promise<void> {
+  if (globalDataDb.__dd_data_db_seeded) return;
   const db = await ensureSchema();
   const result = await db.execute("SELECT COUNT(*) as count FROM players");
   const count = Number(result.rows[0]?.count ?? 0);
-  if (count > 0) return;
+  if (count > 0) {
+    globalDataDb.__dd_data_db_seeded = true;
+    return;
+  }
   await savePlayers(
     DEFAULT_ROSTER_SEED.map((player) =>
       seasonLib.createPlayer({
@@ -68,18 +73,19 @@ async function seedDefaultPlayersIfNeeded(): Promise<void> {
       })
     )
   );
+  globalDataDb.__dd_data_db_seeded = true;
 }
 
 export async function getAllPlayers(): Promise<Player[]> {
   await seedDefaultPlayersIfNeeded();
-  const db = await ensureSchema();
+  const db = getSharedClient("__dd_data_db");
   const result = await db.execute("SELECT data FROM players");
   return result.rows.map((row) => JSON.parse(row.data as string) as Player);
 }
 
 export async function getPlayer(id: string): Promise<Player | undefined> {
   await seedDefaultPlayersIfNeeded();
-  const db = await ensureSchema();
+  const db = getSharedClient("__dd_data_db");
   const result = await db.execute({ sql: "SELECT data FROM players WHERE id = ?", args: [id] });
   const row = result.rows[0];
   return row ? (JSON.parse(row.data as string) as Player) : undefined;
@@ -186,6 +192,7 @@ export async function clearAllData(): Promise<void> {
     "DELETE FROM seasons",
     "DELETE FROM settings",
   ], "write");
+  globalDataDb.__dd_data_db_seeded = false;
 }
 
 export async function restoreBackup(backup: {
@@ -234,4 +241,5 @@ export async function restoreBackup(backup: {
   }
 
   await db.batch(statements, "write");
+  globalDataDb.__dd_data_db_seeded = false;
 }

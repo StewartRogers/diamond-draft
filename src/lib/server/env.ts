@@ -32,13 +32,12 @@ export function validateEnv(): EnvValidation {
   const warnings: string[] = [];
   const { isVercel } = getVercelEnv();
 
-  if (isVercel) {
-    if (!process.env.TURSO_DATABASE_URL) {
-      missing.push("TURSO_DATABASE_URL");
-    }
-    if (!process.env.TURSO_AUTH_TOKEN) {
-      missing.push("TURSO_AUTH_TOKEN");
-    }
+  if (process.env.TURSO_DATABASE_URL && !process.env.TURSO_AUTH_TOKEN) {
+    missing.push("TURSO_AUTH_TOKEN");
+  }
+
+  if (isVercel && !process.env.TURSO_DATABASE_URL) {
+    missing.push("TURSO_DATABASE_URL");
   }
 
   if (!process.env.GEMINI_API_KEY) {
