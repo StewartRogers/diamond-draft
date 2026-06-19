@@ -22,17 +22,17 @@ function makeModel() {
 }
 
 export async function POST(request: Request) {
-  const auth = requireUser(request);
+  const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
   const body = (await request.json()) as PlanRequest;
   const gameId = typeof body.gameId === "string" ? body.gameId.slice(0, 128) : null;
   const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 500) : "";
   if (!gameId) return new Response("Missing gameId", { status: 400 });
 
-  const game = getGame(gameId);
+  const game = await getGame(gameId);
   if (!game) return new Response("Game not found", { status: 404 });
 
-  const players = getAllPlayers();
+  const players = await getAllPlayers();
   const roster = game.rosterSnapshot.map((player) => {
     const live = players.find((p) => p.id === player.id) ?? player;
     return {

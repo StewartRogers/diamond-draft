@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const sessionId = getSessionIdFromRequest(request);
-  if (sessionId) destroySession(sessionId);
+  if (sessionId) await destroySession(sessionId);
 
   return Response.json({ ok: true }, {
     headers: { "Set-Cookie": makeClearSessionCookie() },

@@ -10,7 +10,7 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  if (!needsSetup()) {
+  if (!(await needsSetup())) {
     return Response.json({ error: "Setup already complete" }, { status: 400 });
   }
 
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Setup already complete" }, { status: 400 });
   }
 
-  const session = createSession(user.id);
+  const session = await createSession(user.id);
 
   return Response.json({ user }, {
     status: 201,
@@ -45,5 +45,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return Response.json({ needsSetup: needsSetup() });
+  return Response.json({ needsSetup: await needsSetup() });
 }
