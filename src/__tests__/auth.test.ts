@@ -18,9 +18,9 @@ afterAll(() => {
 });
 
 describe("setup detection", () => {
-  it("needsSetup returns true when no users exist", () => {
-    expect(auth.needsSetup()).toBe(true);
-    expect(auth.countUsers()).toBe(0);
+  it("needsSetup returns true when no users exist", async () => {
+    expect(await auth.needsSetup()).toBe(true);
+    expect(await auth.countUsers()).toBe(0);
   });
 });
 
@@ -35,9 +35,9 @@ describe("user creation", () => {
     expect((user as Record<string, unknown>).salt).toBeUndefined();
   });
 
-  it("needsSetup returns false after creating a user", () => {
-    expect(auth.needsSetup()).toBe(false);
-    expect(auth.countUsers()).toBe(1);
+  it("needsSetup returns false after creating a user", async () => {
+    expect(await auth.needsSetup()).toBe(false);
+    expect(await auth.countUsers()).toBe(1);
   });
 
   it("creates a regular user", async () => {
@@ -83,24 +83,24 @@ describe("authentication", () => {
 describe("session management", () => {
   it("creates a session and retrieves the user", async () => {
     const user = await auth.authenticate("admin", "secret123");
-    const session = auth.createSession(user!.id);
+    const session = await auth.createSession(user!.id);
     expect(session.id).toBeTruthy();
     expect(session.userId).toBe(user!.id);
 
-    const retrieved = auth.getSessionUser(session.id);
+    const retrieved = await auth.getSessionUser(session.id);
     expect(retrieved).not.toBeNull();
     expect(retrieved!.id).toBe(user!.id);
   });
 
-  it("returns null for invalid session id", () => {
-    expect(auth.getSessionUser("nonexistent")).toBeNull();
+  it("returns null for invalid session id", async () => {
+    expect(await auth.getSessionUser("nonexistent")).toBeNull();
   });
 
   it("destroySession invalidates the session", async () => {
     const user = await auth.authenticate("admin", "secret123");
-    const session = auth.createSession(user!.id);
-    auth.destroySession(session.id);
-    expect(auth.getSessionUser(session.id)).toBeNull();
+    const session = await auth.createSession(user!.id);
+    await auth.destroySession(session.id);
+    expect(await auth.getSessionUser(session.id)).toBeNull();
   });
 });
 
@@ -139,50 +139,50 @@ describe("cookie helpers", () => {
 });
 
 describe("route guards", () => {
-  it("requireUser returns 401 for unauthenticated request", () => {
+  it("requireUser returns 401 for unauthenticated request", async () => {
     const request = new Request("http://localhost");
-    const result = auth.requireUser(request);
+    const result = await auth.requireUser(request);
     expect(result).toBeInstanceOf(Response);
     expect((result as Response).status).toBe(401);
   });
 
   it("requireUser returns user for authenticated request", async () => {
     const user = await auth.authenticate("admin", "secret123");
-    const session = auth.createSession(user!.id);
+    const session = await auth.createSession(user!.id);
     const request = new Request("http://localhost", {
       headers: { cookie: `dd_session=${session.id}` },
     });
-    const result = auth.requireUser(request);
+    const result = await auth.requireUser(request);
     expect(result).not.toBeInstanceOf(Response);
     expect((result as { id: string }).id).toBe(user!.id);
   });
 
   it("requireSuperuser returns 403 for non-admin", async () => {
     const user = await auth.authenticate("coach2", "pass1234");
-    const session = auth.createSession(user!.id);
+    const session = await auth.createSession(user!.id);
     const request = new Request("http://localhost", {
       headers: { cookie: `dd_session=${session.id}` },
     });
-    const result = auth.requireSuperuser(request);
+    const result = await auth.requireSuperuser(request);
     expect(result).toBeInstanceOf(Response);
     expect((result as Response).status).toBe(403);
   });
 
   it("requireSuperuser returns user for admin", async () => {
     const user = await auth.authenticate("admin", "secret123");
-    const session = auth.createSession(user!.id);
+    const session = await auth.createSession(user!.id);
     const request = new Request("http://localhost", {
       headers: { cookie: `dd_session=${session.id}` },
     });
-    const result = auth.requireSuperuser(request);
+    const result = await auth.requireSuperuser(request);
     expect(result).not.toBeInstanceOf(Response);
     expect((result as { role: string }).role).toBe("superuser");
   });
 });
 
 describe("user management", () => {
-  it("getAllUsers returns all users without sensitive fields", () => {
-    const users = auth.getAllUsers();
+  it("getAllUsers returns all users without sensitive fields", async () => {
+    const users = await auth.getAllUsers();
     expect(users.length).toBeGreaterThanOrEqual(2);
     for (const u of users) {
       expect((u as Record<string, unknown>).passwordHash).toBeUndefined();
@@ -192,17 +192,17 @@ describe("user management", () => {
 
   it("getUser returns a user by id", async () => {
     const user = await auth.authenticate("admin", "secret123");
-    const found = auth.getUser(user!.id);
+    const found = await auth.getUser(user!.id);
     expect(found).not.toBeUndefined();
     expect(found!.username).toBe("admin");
   });
 
   it("resetPassword changes the password and invalidates sessions", async () => {
     const user = await auth.authenticate("coach2", "pass1234");
-    const session = auth.createSession(user!.id);
+    const session = await auth.createSession(user!.id);
     const ok = await auth.resetPassword(user!.id, "newpass99");
     expect(ok).toBe(true);
-    expect(auth.getSessionUser(session.id)).toBeNull();
+    expect(await auth.getSessionUser(session.id)).toBeNull();
     const loginOld = await auth.authenticate("coach2", "pass1234");
     expect(loginOld).toBeNull();
     const loginNew = await auth.authenticate("coach2", "newpass99");
@@ -211,18 +211,18 @@ describe("user management", () => {
 
   it("setUserRole changes role", async () => {
     const user = await auth.authenticate("coach2", "newpass99");
-    auth.setUserRole(user!.id, "superuser");
-    const updated = auth.getUser(user!.id);
+    await auth.setUserRole(user!.id, "superuser");
+    const updated = await auth.getUser(user!.id);
     expect(updated!.role).toBe("superuser");
-    auth.setUserRole(user!.id, "user");
+    await auth.setUserRole(user!.id, "user");
   });
 
   it("deleteUser removes user and their sessions", async () => {
     const user = await auth.createUser("todelete", "pass12345678", "Delete Me", "user");
-    const session = auth.createSession(user.id);
-    auth.deleteUser(user.id);
-    expect(auth.getUser(user.id)).toBeUndefined();
-    expect(auth.getSessionUser(session.id)).toBeNull();
+    const session = await auth.createSession(user.id);
+    await auth.deleteUser(user.id);
+    expect(await auth.getUser(user.id)).toBeUndefined();
+    expect(await auth.getSessionUser(session.id)).toBeNull();
   });
 });
 
@@ -245,14 +245,14 @@ describe("validatePassword", () => {
 describe("isLastSuperuser", () => {
   it("returns true when user is the only superuser", async () => {
     const admin = await auth.authenticate("admin", "secret123");
-    expect(auth.isLastSuperuser(admin!.id)).toBe(true);
+    expect(await auth.isLastSuperuser(admin!.id)).toBe(true);
   });
 
   it("returns false when another superuser exists", async () => {
     const admin = await auth.authenticate("admin", "secret123");
     const other = await auth.createUser("admin2", "password1234", "Admin 2", "superuser");
-    expect(auth.isLastSuperuser(admin!.id)).toBe(false);
-    auth.deleteUser(other.id);
+    expect(await auth.isLastSuperuser(admin!.id)).toBe(false);
+    await auth.deleteUser(other.id);
   });
 });
 

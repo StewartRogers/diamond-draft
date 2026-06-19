@@ -3,13 +3,13 @@ import { getSessionIdFromRequest, getSessionUser, needsSetup } from "@/lib/serve
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  if (needsSetup()) {
+  if (await needsSetup()) {
     return Response.json({ user: null, needsSetup: true });
   }
   const sessionId = getSessionIdFromRequest(request);
   if (!sessionId) {
     return Response.json({ user: null });
   }
-  const user = getSessionUser(sessionId);
+  const user = await getSessionUser(sessionId);
   return Response.json({ user });
 }

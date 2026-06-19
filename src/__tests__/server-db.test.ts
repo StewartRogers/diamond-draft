@@ -58,15 +58,15 @@ function makeSeason(id: string, overrides: Partial<Season> = {}): Season {
 }
 
 describe("database file", () => {
-  it("creates the SQLite file inside DIAMOND_DRAFT_DATA_DIR", () => {
-    db.getAllGames(); // force connection
+  it("creates the SQLite file inside DIAMOND_DRAFT_DATA_DIR", async () => {
+    await db.getAllGames(); // force connection
     expect(fs.existsSync(path.join(tmpDir, "diamond-draft.sqlite3"))).toBe(true);
   });
 });
 
 describe("default roster seeding", () => {
-  it("seeds 9 default players on first player read", () => {
-    const players = db.getAllPlayers();
+  it("seeds 9 default players on first player read", async () => {
+    const players = await db.getAllPlayers();
     expect(players).toHaveLength(9);
     for (const p of players) {
       expect(p.id).toBeTruthy();
@@ -75,22 +75,22 @@ describe("default roster seeding", () => {
     }
   });
 
-  it("does not re-seed once players exist", () => {
-    const before = db.getAllPlayers();
-    const again = db.getAllPlayers();
+  it("does not re-seed once players exist", async () => {
+    const before = await db.getAllPlayers();
+    const again = await db.getAllPlayers();
     expect(again).toHaveLength(before.length);
     expect(new Set(again.map((p) => p.id)).size).toBe(before.length);
   });
 
-  it("does not re-seed after a player is added to a non-empty table", () => {
+  it("does not re-seed after a player is added to a non-empty table", async () => {
     const extra = makePlayer({ firstName: "Zed" });
-    db.savePlayer(extra);
-    expect(db.getAllPlayers()).toHaveLength(10);
+    await db.savePlayer(extra);
+    expect(await db.getAllPlayers()).toHaveLength(10);
   });
 });
 
 describe("players CRUD", () => {
-  it("saves and retrieves a player by id, round-tripping all fields", () => {
+  it("saves and retrieves a player by id, round-tripping all fields", async () => {
     const player = makePlayer({
       firstName: "Round",
       lastInitial: "T",
@@ -99,135 +99,135 @@ describe("players CRUD", () => {
       pitchingLog: [{ gameId: "g-x", date: "2026-05-01", innings: 2 }],
       notes: "lefty",
     });
-    db.savePlayer(player);
-    expect(db.getPlayer(player.id)).toEqual(player);
+    await db.savePlayer(player);
+    expect(await db.getPlayer(player.id)).toEqual(player);
   });
 
-  it("save with an existing id replaces the player", () => {
+  it("save with an existing id replaces the player", async () => {
     const player = makePlayer({ firstName: "Before" });
-    db.savePlayer(player);
-    db.savePlayer({ ...player, firstName: "After" });
-    expect(db.getPlayer(player.id)?.firstName).toBe("After");
+    await db.savePlayer(player);
+    await db.savePlayer({ ...player, firstName: "After" });
+    expect((await db.getPlayer(player.id))?.firstName).toBe("After");
   });
 
-  it("deletes a player", () => {
+  it("deletes a player", async () => {
     const player = makePlayer();
-    db.savePlayer(player);
-    db.deletePlayer(player.id);
-    expect(db.getPlayer(player.id)).toBeUndefined();
+    await db.savePlayer(player);
+    await db.deletePlayer(player.id);
+    expect(await db.getPlayer(player.id)).toBeUndefined();
   });
 
-  it("getPlayer returns undefined for an unknown id", () => {
-    expect(db.getPlayer("nope")).toBeUndefined();
+  it("getPlayer returns undefined for an unknown id", async () => {
+    expect(await db.getPlayer("nope")).toBeUndefined();
   });
 
-  it("savePlayers writes a batch transactionally", () => {
+  it("savePlayers writes a batch transactionally", async () => {
     const batch = [makePlayer(), makePlayer(), makePlayer()];
-    db.savePlayers(batch);
-    for (const p of batch) expect(db.getPlayer(p.id)).toEqual(p);
+    await db.savePlayers(batch);
+    for (const p of batch) expect(await db.getPlayer(p.id)).toEqual(p);
   });
 });
 
 describe("games CRUD", () => {
-  it("saves and retrieves a game with nested innings intact", () => {
+  it("saves and retrieves a game with nested innings intact", async () => {
     const game = makeGame("game-rt", {
       battingOrder: ["a", "b"],
       playerOverrides: [{ playerId: "a", status: "late", inning: 2 }],
     });
-    db.saveGame(game);
-    expect(db.getGame("game-rt")).toEqual(game);
+    await db.saveGame(game);
+    expect(await db.getGame("game-rt")).toEqual(game);
   });
 
-  it("getAllGames returns games ordered by date descending", () => {
-    db.saveGame(makeGame("game-old", { date: "2026-04-01" }));
-    db.saveGame(makeGame("game-new", { date: "2026-07-01" }));
-    const dates = db.getAllGames().map((g) => g.date);
+  it("getAllGames returns games ordered by date descending", async () => {
+    await db.saveGame(makeGame("game-old", { date: "2026-04-01" }));
+    await db.saveGame(makeGame("game-new", { date: "2026-07-01" }));
+    const dates = (await db.getAllGames()).map((g) => g.date);
     const sorted = [...dates].sort((a, b) => b.localeCompare(a));
     expect(dates).toEqual(sorted);
   });
 
-  it("deletes a game", () => {
-    db.saveGame(makeGame("game-del"));
-    db.deleteGame("game-del");
-    expect(db.getGame("game-del")).toBeUndefined();
+  it("deletes a game", async () => {
+    await db.saveGame(makeGame("game-del"));
+    await db.deleteGame("game-del");
+    expect(await db.getGame("game-del")).toBeUndefined();
   });
 });
 
 describe("seasons CRUD", () => {
-  it("saves, retrieves, and deletes a season", () => {
+  it("saves, retrieves, and deletes a season", async () => {
     const season = makeSeason("season-1", { gameIds: ["g1", "g2"] });
-    db.saveSeason(season);
-    expect(db.getSeason("season-1")).toEqual(season);
-    expect(db.getAllSeasons().some((s) => s.id === "season-1")).toBe(true);
-    db.deleteSeason("season-1");
-    expect(db.getSeason("season-1")).toBeUndefined();
+    await db.saveSeason(season);
+    expect(await db.getSeason("season-1")).toEqual(season);
+    expect((await db.getAllSeasons()).some((s) => s.id === "season-1")).toBe(true);
+    await db.deleteSeason("season-1");
+    expect(await db.getSeason("season-1")).toBeUndefined();
   });
 });
 
 describe("settings", () => {
-  it("returns defaults when nothing is saved", () => {
-    expect(db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
+  it("returns defaults when nothing is saved", async () => {
+    expect(await db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
   });
 
-  it("round-trips saved settings", () => {
+  it("round-trips saved settings", async () => {
     const settings: AppSettings = {
       activeSeasonId: "season-x",
       teamName: "Tigers",
       leagueRules: { ...DEFAULT_LEAGUE_RULES, defaultInnings: 7 },
       onboardingComplete: true,
     };
-    db.saveSettings(settings);
-    expect(db.getSettings()).toEqual(settings);
+    await db.saveSettings(settings);
+    expect(await db.getSettings()).toEqual(settings);
   });
 });
 
 describe("clearAllData", () => {
-  it("wipes all tables (players re-seed on next read)", () => {
-    db.saveGame(makeGame("game-wipe"));
-    db.saveSeason(makeSeason("season-wipe"));
-    db.clearAllData();
-    expect(db.getGame("game-wipe")).toBeUndefined();
-    expect(db.getAllSeasons()).toHaveLength(0);
-    expect(db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
+  it("wipes all tables (players re-seed on next read)", async () => {
+    await db.saveGame(makeGame("game-wipe"));
+    await db.saveSeason(makeSeason("season-wipe"));
+    await db.clearAllData();
+    expect(await db.getGame("game-wipe")).toBeUndefined();
+    expect(await db.getAllSeasons()).toHaveLength(0);
+    expect(await db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
     // Player table is empty, so the next read re-seeds the default roster.
-    expect(db.getAllPlayers()).toHaveLength(9);
+    expect(await db.getAllPlayers()).toHaveLength(9);
   });
 });
 
 describe("restoreBackup", () => {
-  it("replaces all existing data with the backup contents", () => {
-    db.saveGame(makeGame("game-pre"));
+  it("replaces all existing data with the backup contents", async () => {
+    await db.saveGame(makeGame("game-pre"));
     const player = makePlayer({ firstName: "Backup" });
     const game = makeGame("game-bk");
     const season = makeSeason("season-bk");
     const settings: AppSettings = { ...DEFAULT_APP_SETTINGS, teamName: "Restored" };
 
-    db.restoreBackup({ players: [player], games: [game], seasons: [season], settings });
+    await db.restoreBackup({ players: [player], games: [game], seasons: [season], settings });
 
-    expect(db.getGame("game-pre")).toBeUndefined();
-    expect(db.getAllPlayers()).toEqual([player]);
-    expect(db.getGame("game-bk")).toEqual(game);
-    expect(db.getSeason("season-bk")).toEqual(season);
-    expect(db.getSettings()).toEqual(settings);
+    expect(await db.getGame("game-pre")).toBeUndefined();
+    expect(await db.getAllPlayers()).toEqual([player]);
+    expect(await db.getGame("game-bk")).toEqual(game);
+    expect(await db.getSeason("season-bk")).toEqual(season);
+    expect(await db.getSettings()).toEqual(settings);
   });
 
-  it("skips malformed records instead of failing the restore", () => {
+  it("skips malformed records instead of failing the restore", async () => {
     const good = makePlayer({ firstName: "Good" });
-    db.restoreBackup({
+    await db.restoreBackup({
       players: [good, { bad: true } as unknown as Player, null as unknown as Player],
       games: [{ id: "no-date" } as unknown as Game],
       seasons: [{} as unknown as Season],
       settings: DEFAULT_APP_SETTINGS,
     });
-    expect(db.getAllPlayers()).toEqual([good]);
-    expect(db.getAllGames()).toHaveLength(0);
-    expect(db.getAllSeasons()).toHaveLength(0);
+    expect(await db.getAllPlayers()).toEqual([good]);
+    expect(await db.getAllGames()).toHaveLength(0);
+    expect(await db.getAllSeasons()).toHaveLength(0);
   });
 
-  it("restoring an empty backup leaves empty tables (then players re-seed)", () => {
-    db.restoreBackup({ players: [], games: [], seasons: [], settings: DEFAULT_APP_SETTINGS });
-    expect(db.getAllGames()).toHaveLength(0);
-    expect(db.getAllSeasons()).toHaveLength(0);
-    expect(db.getAllPlayers()).toHaveLength(9); // re-seeded
+  it("restoring an empty backup leaves empty tables (then players re-seed)", async () => {
+    await db.restoreBackup({ players: [], games: [], seasons: [], settings: DEFAULT_APP_SETTINGS });
+    expect(await db.getAllGames()).toHaveLength(0);
+    expect(await db.getAllSeasons()).toHaveLength(0);
+    expect(await db.getAllPlayers()).toHaveLength(9); // re-seeded
   });
 });
