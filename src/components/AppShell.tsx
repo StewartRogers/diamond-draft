@@ -102,22 +102,10 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-        flexWrap: "wrap", gap: 16, marginBottom: 26,
-      }}
-    >
+    <div className="dd-page-header">
       <div>
         {eyebrow && <div className="dd-eyebrow" style={{ marginBottom: 8 }}>{eyebrow}</div>}
-        <h1
-          style={{
-            fontSize: 30, fontWeight: 800, letterSpacing: "-.02em",
-            margin: 0, color: C.ink,
-          }}
-        >
-          {title}
-        </h1>
+        <h1 className="dd-page-title">{title}</h1>
         {subtitle && (
           <p style={{ fontSize: 14.5, color: C.muted, margin: "5px 0 0" }}>{subtitle}</p>
         )}
@@ -204,6 +192,7 @@ export function DeleteGameModal({ game, onClose }: { game: Game; onClose: () => 
 
 export function GameRow({ game }: { game: Game }) {
   const { day, mon } = parseDate(game.date);
+  const router = useRouter();
   const [showDelete, setShowDelete] = useState(false);
   const statusPill =
     game.status === "finalized"
@@ -213,86 +202,34 @@ export function GameRow({ game }: { game: Game }) {
 
   return (
     <>
-      <div style={{ position: "relative" }}>
+      {/* Desktop layout: Link card with absolutely-positioned action buttons */}
+      <div className="dd-game-row-desktop">
         <Link href={`/games/${game.id}`} className="dd-listrow" style={{ paddingRight: 92 }}>
-          {/* Date chip */}
-          <div
-            style={{
-              width: 52, height: 52, borderRadius: 12,
-              background: C.greenBg, border: `1px solid ${C.greenBd}`,
-              display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: C.green, lineHeight: 1 }}>
-              {day}
-            </span>
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, color: C.faint, letterSpacing: ".05em", marginTop: 1 }}>
-              {mon}
-            </span>
+          <div className="dd-game-date-chip">
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: C.green, lineHeight: 1 }}>{day}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, color: C.faint, letterSpacing: ".05em", marginTop: 1 }}>{mon}</span>
           </div>
-
-          {/* Info */}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {game.opponent ? `vs ${game.opponent}` : game.date}
-              </span>
-            </div>
-            <div style={{ fontSize: 13, color: C.faint, marginTop: 3, whiteSpace: "nowrap" }}>
-              {game.innings.length} innings · {game.rosterSnapshot.length} players
-            </div>
+            <span className="dd-game-row-title">{game.opponent ? `vs ${game.opponent}` : game.date}</span>
+            <div style={{ fontSize: 13, color: C.faint, marginTop: 3 }}>{game.innings.length} innings · {game.rosterSnapshot.length} players</div>
           </div>
-
-          {/* Status + chevron */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <Pill fg={statusPill.fg} bg={statusPill.bg} bd={statusPill.bd}>
-              {statusPill.t}
-            </Pill>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={C.faint2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6.5 4l5 5-5 5"/>
-            </svg>
+            <Pill fg={statusPill.fg} bg={statusPill.bg} bd={statusPill.bd}>{statusPill.t}</Pill>
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke={C.faint2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 4l5 5-5 5"/></svg>
           </div>
         </Link>
-
-        {/* Stats button */}
-        <Link
-          href={`/games/${game.id}/stats`}
-          onClick={(e) => e.stopPropagation()}
-          title="View / edit game stats"
-          style={{
-            position: "absolute", right: 48, top: "50%", transform: "translateY(-50%)",
-            width: 32, height: 32, borderRadius: 8,
-            background: hasStats ? C.blueBg : "transparent",
-            border: hasStats ? `1px solid ${C.blueBd}` : "none",
-            cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: hasStats ? C.blue : C.faint,
-            textDecoration: "none",
-          }}
+        <Link href={`/games/${game.id}/stats`} onClick={(e) => e.stopPropagation()} title="View / edit game stats"
+          className="dd-game-row-action dd-game-row-stats"
+          style={{ background: hasStats ? C.blueBg : "transparent", border: hasStats ? `1px solid ${C.blueBd}` : "none", color: hasStats ? C.blue : C.faint }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = C.blueBg; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = hasStats ? C.blueBg : "transparent"; }}
         >
-          {/* Bar-chart icon */}
           <svg width="15" height="15" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="10" width="3" height="6" rx="1"/>
-            <rect x="7.5" y="6" width="3" height="10" rx="1"/>
-            <rect x="13" y="2" width="3" height="14" rx="1"/>
+            <rect x="2" y="10" width="3" height="6" rx="1"/><rect x="7.5" y="6" width="3" height="10" rx="1"/><rect x="13" y="2" width="3" height="14" rx="1"/>
           </svg>
         </Link>
-
-        {/* Delete button — overlaid so it doesn't inherit the link */}
-        <button
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDelete(true); }}
-          title="Delete game"
-          style={{
-            position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            width: 32, height: 32, borderRadius: 8,
-            background: "transparent", border: "none", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: C.faint,
-          }}
+        <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowDelete(true); }} title="Delete game"
+          className="dd-game-row-action dd-game-row-delete"
           onMouseEnter={(e) => (e.currentTarget.style.background = C.redBg)}
           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
         >
@@ -300,6 +237,57 @@ export function GameRow({ game }: { game: Game }) {
             <path d="M3 5h12M8 5V3h2v2M6 5l.5 10h5L12 5"/>
           </svg>
         </button>
+      </div>
+
+      {/* Mobile layout: single card with inline action bar */}
+      <div className="dd-game-row-mobile" onClick={() => router.push(`/games/${game.id}`)}>
+        <div className="dd-listrow" style={{ flexWrap: "wrap", cursor: "pointer" }}>
+          <div className="dd-game-date-chip">
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: C.green, lineHeight: 1 }}>{day}</span>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, fontWeight: 600, color: C.faint, letterSpacing: ".05em", marginTop: 1 }}>{mon}</span>
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <span style={{ fontSize: 15, fontWeight: 700, display: "block" }}>{game.opponent ? `vs ${game.opponent}` : game.date}</span>
+            <div style={{ fontSize: 13, color: C.faint, marginTop: 3 }}>{game.innings.length} inn · {game.rosterSnapshot.length} players</div>
+          </div>
+          {/* Bottom bar: status pill + action icons */}
+          <div className="dd-game-row-bar">
+            <Pill fg={statusPill.fg} bg={statusPill.bg} bd={statusPill.bd}>{statusPill.t}</Pill>
+            <div className="dd-game-row-icons">
+              {/* Edit */}
+              <span
+                onClick={(e) => { e.stopPropagation(); router.push(`/games/${game.id}`); }}
+                className="dd-game-icon"
+                title="Edit lineup"
+              >
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13 2l3 3-9 9H4v-3L13 2z"/>
+                </svg>
+              </span>
+              {/* Stats */}
+              <span
+                onClick={(e) => { e.stopPropagation(); router.push(`/games/${game.id}/stats`); }}
+                className="dd-game-icon"
+                style={{ color: hasStats ? C.blue : C.faint, background: hasStats ? C.blueBg : undefined }}
+                title="Game stats"
+              >
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="10" width="3" height="6" rx="1"/><rect x="7.5" y="6" width="3" height="10" rx="1"/><rect x="13" y="2" width="3" height="14" rx="1"/>
+                </svg>
+              </span>
+              {/* Delete */}
+              <span
+                onClick={(e) => { e.stopPropagation(); setShowDelete(true); }}
+                className="dd-game-icon dd-game-icon-danger"
+                title="Delete game"
+              >
+                <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 5h12M8 5V3h2v2M6 5l.5 10h5L12 5"/>
+                </svg>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {showDelete && <DeleteGameModal game={game} onClose={() => setShowDelete(false)} />}
@@ -428,7 +416,7 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setOpponent(e.target.value)}
             />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          <div className="dd-grid-2col">
             <div className="dd-field">
               <label>Date</label>
               <input
@@ -466,20 +454,13 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
           {/* Absent players */}
           <div className="dd-field">
             <label>Who&rsquo;s absent today? <span style={{ fontWeight: 400, color: C.faint }}>(optional)</span></label>
-            <div
-              style={{
-                border: `1px solid ${C.line}`, borderRadius: 10,
-                maxHeight: 180, overflowY: "auto",
-              }}
-            >
+            <div className="dd-absent-list">
               {players.map((p, i) => (
                 <label
                   key={p.id}
+                  className="dd-absent-item"
                   style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    padding: "9px 13px",
                     borderTop: i > 0 ? `1px solid ${C.line2}` : undefined,
-                    cursor: "pointer",
                     background: absentIds.has(p.id) ? C.amberBg : undefined,
                   }}
                 >
@@ -487,9 +468,9 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
                     type="checkbox"
                     checked={absentIds.has(p.id)}
                     onChange={() => toggleAbsent(p.id)}
-                    style={{ accentColor: C.amber, width: 15, height: 15, flexShrink: 0 }}
+                    style={{ accentColor: C.amber, width: 18, height: 18, flexShrink: 0 }}
                   />
-                  <span style={{ fontSize: 13.5, color: absentIds.has(p.id) ? C.amber : C.ink }}>
+                  <span style={{ fontSize: 14, color: absentIds.has(p.id) ? C.amber : C.ink }}>
                     #{p.jerseyNumber} {p.firstName} {p.lastInitial}
                   </span>
                 </label>

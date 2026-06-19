@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Player } from "@/lib/types";
 import type { CellValue, SortMode, ViewMode } from "./shared";
 import { PAL, WORD, ZONE, isField, fmtName } from "./shared";
@@ -159,10 +160,7 @@ export function InningStepper({ inning, numInnings, setInning }: { inning: numbe
   );
 }
 
-export function GridView({
-  rows, byId, battingSlot, schedule, numInnings, scratchedIds, sort,
-  onGrip, editKey, onCell, onFieldPerInning,
-}: {
+type GridViewProps = {
   rows: string[];
   byId: Record<string, Player>;
   battingSlot: (id: string) => number;
@@ -174,7 +172,11 @@ export function GridView({
   editKey: string | null;
   onCell: (e: React.MouseEvent, id: string, inn: number) => void;
   onFieldPerInning: number[];
-}) {
+};
+
+export function GridView(props: GridViewProps) {
+  const { rows, byId, battingSlot, schedule, numInnings, scratchedIds, sort,
+    onGrip, editKey, onCell, onFieldPerInning } = props;
   const INN = Array.from({ length: numInnings }, (_, i) => i);
   return (
     <table>
@@ -222,5 +224,117 @@ export function GridView({
         </tr>
       </tfoot>
     </table>
+  );
+}
+
+const MOBILE_COLS = 3;
+
+export function MobileGridView(props: GridViewProps) {
+  const { rows, byId, battingSlot, schedule, numInnings, scratchedIds, sort,
+    onGrip, editKey, onCell, onFieldPerInning } = props;
+  const [page, setPage] = useState(0);
+  const maxPage = Math.max(0, Math.ceil(numInnings / MOBILE_COLS) - 1);
+  const startInn = page * MOBILE_COLS;
+  const visibleInns = Array.from(
+    { length: Math.min(MOBILE_COLS, numInnings - startInn) },
+    (_, i) => startInn + i
+  );
+
+  return (
+    <div>
+      {/* Inning pager */}
+      <div className="ddg-pager">
+        <button
+          className="ddg-pager-btn"
+          onClick={() => setPage(Math.max(0, page - 1))}
+          disabled={page === 0}
+        >
+          ‹
+        </button>
+        <span className="ddg-pager-label">
+          Inn {startInn + 1}–{startInn + visibleInns.length} of {numInnings}
+        </span>
+        <button
+          className="ddg-pager-btn"
+          onClick={() => setPage(Math.min(maxPage, page + 1))}
+          disabled={page >= maxPage}
+        >
+          ›
+        </button>
+      </div>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+        <table style={{ minWidth: 360 }}>
+          <colgroup>
+            <col style={{ width: 36 }} />
+            <col style={{ width: 120 }} />
+            {visibleInns.map((n) => <col key={n} />)}
+            <col style={{ width: 32 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th className={"colbat" + (sort === "bat" ? " sorted" : "")}>#</th>
+              <th className="colplayer" style={{ textAlign: "left", paddingLeft: 8 }}>PLAYER</th>
+              {visibleInns.map((i) => <th key={i} className="inncol">Inn {i + 1}</th>)}
+              <th className="colbench" title="Total bench innings">🪑</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((id) => {
+              const player = byId[id];
+              if (!player) return null;
+              const fullSched = schedule[id] ?? Array(numInnings).fill("BENCH");
+              const windowSched = visibleInns.map((i) => fullSched[i]);
+              const benchCount = fullSched.filter((v) => v === "BENCH" || v === "BULLPEN").length;
+              const benchColor = benchCount === 0 ? "#c8c4bb" : benchCount >= 3 ? "#c2410c" : benchCount >= 2 ? "#ca8a04" : "#211f1b";
+              const scratched = scratchedIds.includes(id);
+              return (
+                <tr key={id} data-rid={id} style={{ opacity: scratched ? 0.55 : 1 }}>
+                  <td className="colbat" style={{ background: scratched ? "#f4f2ec" : "#fff", padding: "8px 4px", textAlign: "center" }}>
+                    <span className="batnum" style={{ color: scratched ? "#bdb8ad" : "#211f1b", fontSize: 14 }}>
+                      {scratched ? "—" : battingSlot(id)}
+                    </span>
+                  </td>
+                  <td className="colplayer" style={{ textAlign: "left", padding: "8px 6px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="jersey" style={{ minWidth: 22, height: 20, fontSize: 10, ...(scratched ? { background: "#efede6", color: "#a8a39a" } : {}) }}>
+                        {player.jerseyNumber}
+                      </span>
+                      <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 80, textDecoration: scratched ? "line-through" : "none" }}>
+                        {fmtName(player)}
+                      </span>
+                    </div>
+                  </td>
+                  {windowSched.map((v, wi) => (
+                    <Cell
+                      key={visibleInns[wi]}
+                      v={v}
+                      editing={editKey === id + ":" + visibleInns[wi]}
+                      onClick={(e) => onCell(e, id, visibleInns[wi])}
+                    />
+                  ))}
+                  <td className="colbench" style={{ padding: "8px 4px", textAlign: "center" }}>
+                    <span style={{ fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 12, fontWeight: 700, color: benchColor }}>
+                      {benchCount}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="colbat" />
+              <td className="colplayer" style={{ textAlign: "right", paddingRight: 6, fontSize: 10, letterSpacing: ".04em" }}>FIELD →</td>
+              {visibleInns.map((i) => (
+                <td key={i} className="inncol" style={{ color: onFieldPerInning[i] === 9 ? "#3f6212" : "#9a3412", fontWeight: 600 }}>
+                  {onFieldPerInning[i]}<span style={{ color: "#b3aea3" }}>/9</span>
+                </td>
+              ))}
+              <td className="colbench" />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
   );
 }
