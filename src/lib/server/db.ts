@@ -1,17 +1,11 @@
 import "server-only";
 
-import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import type { Client } from "@libsql/client";
 import type { AppSettings, Game, Player, Season } from "../types";
 import { DEFAULT_APP_SETTINGS } from "../types";
 import * as seasonLib from "../season";
+import { getSharedClient, ensureWalMode } from "./connection";
 
-// Overridable so tests (and alternate deployments) can point at another
-// directory. Resolved lazily in getDb() so the env var is read at first use.
-function getDataDir(): string {
-  return process.env.DIAMOND_DRAFT_DATA_DIR ?? path.join(process.cwd(), "data");
-}
 const DEFAULT_ROSTER_SEED = [
   { firstName: "Aiden", lastInitial: "A", jerseyNumber: "1" },
   { firstName: "Brooks", lastInitial: "B", jerseyNumber: "2" },
@@ -24,48 +18,46 @@ const DEFAULT_ROSTER_SEED = [
   { firstName: "Ira", lastInitial: "I", jerseyNumber: "9" },
 ] as const;
 
-const globalDataDb = globalThis as typeof globalThis & { __dd_data_db?: InstanceType<typeof Database> };
+const globalDataDb = globalThis as typeof globalThis & {
+  __dd_data_db_initialized?: boolean;
+};
 
-function getDb() {
-  if (globalDataDb.__dd_data_db) return globalDataDb.__dd_data_db;
-  const dataDir = getDataDir();
-  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-  const db = new Database(path.join(dataDir, "diamond-draft.sqlite3"));
-  db.pragma("journal_mode = WAL");
-  globalDataDb.__dd_data_db = db;
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS players (
+async function ensureSchema(): Promise<Client> {
+  const db = getSharedClient("__dd_data_db");
+  if (globalDataDb.__dd_data_db_initialized) return db;
+
+  await ensureWalMode(db);
+  await db.batch([
+    `CREATE TABLE IF NOT EXISTS players (
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS games (
+    )`,
+    `CREATE TABLE IF NOT EXISTS games (
       id TEXT PRIMARY KEY,
       date TEXT NOT NULL,
       data TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_games_date ON games(date);
-    CREATE TABLE IF NOT EXISTS seasons (
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_games_date ON games(date)",
+    `CREATE TABLE IF NOT EXISTS seasons (
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS settings (
+    )`,
+    `CREATE TABLE IF NOT EXISTS settings (
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL
-    );
-  `);
+    )`,
+  ], "write");
+
+  globalDataDb.__dd_data_db_initialized = true;
   return db;
 }
 
-function rowTo<T>(row: { data: string } | undefined): T | undefined {
-  return row ? (JSON.parse(row.data) as T) : undefined;
-}
-
-function seedDefaultPlayersIfNeeded(): void {
-  const count = getDb().prepare("SELECT COUNT(*) as count FROM players").get() as
-    | { count: number }
-    | undefined;
-  if ((count?.count ?? 0) > 0) return;
-  savePlayers(
+async function seedDefaultPlayersIfNeeded(): Promise<void> {
+  const db = await ensureSchema();
+  const result = await db.execute("SELECT COUNT(*) as count FROM players");
+  const count = Number(result.rows[0]?.count ?? 0);
+  if (count > 0) return;
+  await savePlayers(
     DEFAULT_ROSTER_SEED.map((player) =>
       seasonLib.createPlayer({
         ...player,
@@ -78,141 +70,168 @@ function seedDefaultPlayersIfNeeded(): void {
   );
 }
 
-export function getAllPlayers(): Player[] {
-  seedDefaultPlayersIfNeeded();
-  return getDb()
-    .prepare<{ data: string }>("SELECT data FROM players")
-    .all()
-    .map((row) => JSON.parse(row.data) as Player);
+export async function getAllPlayers(): Promise<Player[]> {
+  await seedDefaultPlayersIfNeeded();
+  const db = await ensureSchema();
+  const result = await db.execute("SELECT data FROM players");
+  return result.rows.map((row) => JSON.parse(row.data as string) as Player);
 }
 
-export function getPlayer(id: string): Player | undefined {
-  seedDefaultPlayersIfNeeded();
-  return rowTo<Player>(
-    getDb().prepare<{ data: string }>("SELECT data FROM players WHERE id = ?").get(id)
-  );
+export async function getPlayer(id: string): Promise<Player | undefined> {
+  await seedDefaultPlayersIfNeeded();
+  const db = await ensureSchema();
+  const result = await db.execute({ sql: "SELECT data FROM players WHERE id = ?", args: [id] });
+  const row = result.rows[0];
+  return row ? (JSON.parse(row.data as string) as Player) : undefined;
 }
 
-export function savePlayer(player: Player): void {
-  getDb()
-    .prepare("INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)")
-    .run(player.id, JSON.stringify(player));
-}
-
-export function deletePlayer(id: string): void {
-  getDb().prepare("DELETE FROM players WHERE id = ?").run(id);
-}
-
-export function savePlayers(players: Player[]): void {
-  const stmt = getDb().prepare("INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)");
-  const tx = getDb().transaction((rows: Player[]) => {
-    for (const player of rows) stmt.run(player.id, JSON.stringify(player));
+export async function savePlayer(player: Player): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({
+    sql: "INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)",
+    args: [player.id, JSON.stringify(player)],
   });
-  tx(players);
 }
 
-export function getAllGames(): Game[] {
-  return getDb()
-    .prepare<{ data: string }>("SELECT data FROM games ORDER BY date DESC")
-    .all()
-    .map((row) => JSON.parse(row.data) as Game);
+export async function deletePlayer(id: string): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({ sql: "DELETE FROM players WHERE id = ?", args: [id] });
 }
 
-export function getGame(id: string): Game | undefined {
-  return rowTo<Game>(
-    getDb().prepare<{ data: string }>("SELECT data FROM games WHERE id = ?").get(id)
+export async function savePlayers(players: Player[]): Promise<void> {
+  const db = await ensureSchema();
+  await db.batch(
+    players.map((player) => ({
+      sql: "INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)",
+      args: [player.id, JSON.stringify(player)],
+    })),
+    "write"
   );
 }
 
-export function saveGame(game: Game): void {
-  getDb()
-    .prepare("INSERT OR REPLACE INTO games (id, date, data) VALUES (?, ?, ?)")
-    .run(game.id, game.date, JSON.stringify(game));
+export async function getAllGames(): Promise<Game[]> {
+  const db = await ensureSchema();
+  const result = await db.execute("SELECT data FROM games ORDER BY date DESC");
+  return result.rows.map((row) => JSON.parse(row.data as string) as Game);
 }
 
-export function deleteGame(id: string): void {
-  getDb().prepare("DELETE FROM games WHERE id = ?").run(id);
+export async function getGame(id: string): Promise<Game | undefined> {
+  const db = await ensureSchema();
+  const result = await db.execute({ sql: "SELECT data FROM games WHERE id = ?", args: [id] });
+  const row = result.rows[0];
+  return row ? (JSON.parse(row.data as string) as Game) : undefined;
 }
 
-export function getAllSeasons(): Season[] {
-  return getDb()
-    .prepare<{ data: string }>("SELECT data FROM seasons")
-    .all()
-    .map((row) => JSON.parse(row.data) as Season);
+export async function saveGame(game: Game): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({
+    sql: "INSERT OR REPLACE INTO games (id, date, data) VALUES (?, ?, ?)",
+    args: [game.id, game.date, JSON.stringify(game)],
+  });
 }
 
-export function getSeason(id: string): Season | undefined {
-  return rowTo<Season>(
-    getDb().prepare<{ data: string }>("SELECT data FROM seasons WHERE id = ?").get(id)
-  );
+export async function deleteGame(id: string): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({ sql: "DELETE FROM games WHERE id = ?", args: [id] });
 }
 
-export function saveSeason(season: Season): void {
-  getDb()
-    .prepare("INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)")
-    .run(season.id, JSON.stringify(season));
+export async function getAllSeasons(): Promise<Season[]> {
+  const db = await ensureSchema();
+  const result = await db.execute("SELECT data FROM seasons");
+  return result.rows.map((row) => JSON.parse(row.data as string) as Season);
 }
 
-export function deleteSeason(id: string): void {
-  getDb().prepare("DELETE FROM seasons WHERE id = ?").run(id);
+export async function getSeason(id: string): Promise<Season | undefined> {
+  const db = await ensureSchema();
+  const result = await db.execute({ sql: "SELECT data FROM seasons WHERE id = ?", args: [id] });
+  const row = result.rows[0];
+  return row ? (JSON.parse(row.data as string) as Season) : undefined;
+}
+
+export async function saveSeason(season: Season): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({
+    sql: "INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)",
+    args: [season.id, JSON.stringify(season)],
+  });
+}
+
+export async function deleteSeason(id: string): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({ sql: "DELETE FROM seasons WHERE id = ?", args: [id] });
 }
 
 const SETTINGS_KEY = "app-settings";
 
-export function getSettings(): AppSettings {
-  const row = getDb()
-    .prepare("SELECT data FROM settings WHERE id = ?")
-    .get(SETTINGS_KEY) as { data: string } | undefined;
-  return row ? (JSON.parse(row.data) as AppSettings) : { ...DEFAULT_APP_SETTINGS };
+export async function getSettings(): Promise<AppSettings> {
+  const db = await ensureSchema();
+  const result = await db.execute({ sql: "SELECT data FROM settings WHERE id = ?", args: [SETTINGS_KEY] });
+  const row = result.rows[0];
+  return row ? (JSON.parse(row.data as string) as AppSettings) : { ...DEFAULT_APP_SETTINGS };
 }
 
-export function saveSettings(settings: AppSettings): void {
-  getDb()
-    .prepare("INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)")
-    .run(SETTINGS_KEY, JSON.stringify(settings));
+export async function saveSettings(settings: AppSettings): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({
+    sql: "INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)",
+    args: [SETTINGS_KEY, JSON.stringify(settings)],
+  });
 }
 
-export function clearAllData(): void {
-  const database = getDb();
-  database.exec("DELETE FROM players; DELETE FROM games; DELETE FROM seasons; DELETE FROM settings;");
+export async function clearAllData(): Promise<void> {
+  const db = await ensureSchema();
+  await db.batch([
+    "DELETE FROM players",
+    "DELETE FROM games",
+    "DELETE FROM seasons",
+    "DELETE FROM settings",
+  ], "write");
 }
 
-/**
- * Atomically replace all data with a backup.
- * The wipe and all writes happen inside a single SQLite transaction so a
- * mid-restore failure never leaves the database in a partially-empty state.
- */
-export function restoreBackup(backup: {
+export async function restoreBackup(backup: {
   players: Player[];
   games: Game[];
   seasons: Season[];
   settings: AppSettings;
-}): void {
-  const database = getDb();
-  const stmtPlayer = database.prepare("INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)");
-  const stmtGame = database.prepare("INSERT OR REPLACE INTO games (id, date, data) VALUES (?, ?, ?)");
-  const stmtSeason = database.prepare("INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)");
-  const stmtSettings = database.prepare("INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)");
+}): Promise<void> {
+  const db = await ensureSchema();
+  const statements: { sql: string; args: (string | number)[] }[] = [
+    { sql: "DELETE FROM players", args: [] },
+    { sql: "DELETE FROM games", args: [] },
+    { sql: "DELETE FROM seasons", args: [] },
+    { sql: "DELETE FROM settings", args: [] },
+  ];
 
-  database.transaction(() => {
-    database.exec("DELETE FROM players; DELETE FROM games; DELETE FROM seasons; DELETE FROM settings;");
-    for (const player of backup.players) {
-      if (player?.id && typeof player.id === "string") {
-        stmtPlayer.run(player.id, JSON.stringify(player));
-      }
+  for (const player of backup.players) {
+    if (player?.id && typeof player.id === "string") {
+      statements.push({
+        sql: "INSERT OR REPLACE INTO players (id, data) VALUES (?, ?)",
+        args: [player.id, JSON.stringify(player)],
+      });
     }
-    for (const game of backup.games) {
-      if (game?.id && typeof game.id === "string" && game.date) {
-        stmtGame.run(game.id, game.date, JSON.stringify(game));
-      }
+  }
+  for (const game of backup.games) {
+    if (game?.id && typeof game.id === "string" && game.date) {
+      statements.push({
+        sql: "INSERT OR REPLACE INTO games (id, date, data) VALUES (?, ?, ?)",
+        args: [game.id, game.date, JSON.stringify(game)],
+      });
     }
-    for (const season of backup.seasons) {
-      if (season?.id && typeof season.id === "string") {
-        stmtSeason.run(season.id, JSON.stringify(season));
-      }
+  }
+  for (const season of backup.seasons) {
+    if (season?.id && typeof season.id === "string") {
+      statements.push({
+        sql: "INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)",
+        args: [season.id, JSON.stringify(season)],
+      });
     }
-    if (backup.settings && typeof backup.settings === "object") {
-      stmtSettings.run(SETTINGS_KEY, JSON.stringify(backup.settings));
-    }
-  })();
+  }
+  if (backup.settings && typeof backup.settings === "object") {
+    statements.push({
+      sql: "INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)",
+      args: [SETTINGS_KEY, JSON.stringify(backup.settings)],
+    });
+  }
+
+  await db.batch(statements, "write");
 }

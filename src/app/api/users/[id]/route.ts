@@ -4,17 +4,17 @@ import type { UserRole } from "@/lib/server/auth";
 export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const result = requireSuperuser(request);
+  const result = await requireSuperuser(request);
   if (result instanceof Response) return result;
 
   const { id } = await params;
-  const user = getUser(id);
+  const user = await getUser(id);
   if (!user) return Response.json({ error: "Not found" }, { status: 404 });
   return Response.json(user);
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const result = requireSuperuser(request);
+  const result = await requireSuperuser(request);
   if (result instanceof Response) return result;
 
   const { id } = await params;
@@ -30,19 +30,19 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   if (body.role && (body.role === "superuser" || body.role === "user")) {
-    if (body.role === "user" && isLastSuperuser(id)) {
+    if (body.role === "user" && (await isLastSuperuser(id))) {
       return Response.json({ error: "Cannot demote the last admin" }, { status: 400 });
     }
-    const ok = setUserRole(id, body.role);
+    const ok = await setUserRole(id, body.role);
     if (!ok) return Response.json({ error: "User not found" }, { status: 404 });
   }
 
-  const updated = getUser(id);
+  const updated = await getUser(id);
   return Response.json(updated);
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const caller = requireSuperuser(request);
+  const caller = await requireSuperuser(request);
   if (caller instanceof Response) return caller;
 
   const { id } = await params;
@@ -50,6 +50,6 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return Response.json({ error: "Cannot delete your own account" }, { status: 400 });
   }
 
-  deleteUser(id);
+  await deleteUser(id);
   return new Response(null, { status: 204 });
 }
