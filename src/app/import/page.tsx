@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useDiamondDraftStore } from "@/lib/store";
-import type { GameStats, HittingStats, PitchingGameStats } from "@/lib/types";
+import type { HittingStats, PitchingGameStats } from "@/lib/types";
 import { C, PageHeader } from "@/components/AppShell";
 
 // ─── CSV parsing ──────────────────────────────────────────────────────────────

@@ -113,8 +113,8 @@ export function FieldView({
 
   return (
     <div className="ddfield">
-      <div style={{ flex: "0 0 568px" }}>
-        <div style={{ position: "relative", width: 568, aspectRatio: "1000 / 880" }}>
+      <div className="ddfield-diamond-wrap">
+        <div style={{ position: "relative", width: "100%", aspectRatio: "1000 / 880" }}>
           <FieldSVG />
           {FIELD_ORDER.map((pos) => {
             const meta = FIELD_POS_MAP[pos];

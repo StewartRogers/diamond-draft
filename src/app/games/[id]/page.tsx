@@ -73,7 +73,7 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
       {editing ? (
         <div style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 12, padding: "18px 22px", marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.faint, letterSpacing: ".04em", marginBottom: 14 }}>EDIT GAME DETAILS</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <div className="dd-grid-2col" style={{ marginBottom: 12 }}>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.faint, marginBottom: 4 }}>Date</label>
               <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
@@ -104,8 +104,8 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: C.ink }}>
+        <div className="dd-game-detail-info">
+          <div className="dd-game-detail-title">
             {game.teamName ?? "Team"} vs {game.opponent || "—"}
           </div>
           <div style={{ fontSize: 13, color: C.faint }}>{game.date}</div>
@@ -163,10 +163,15 @@ export default function GamePage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
-      {/* Builder — FitCard scales down to fit, never up */}
-      <FitCard width={1320}>
+      {/* Builder — FitCard scales on desktop; native scroll on mobile */}
+      <div className="dd-lineup-desktop">
+        <FitCard width={1320}>
+          <LineupBuilder game={game} players={gameRoster} />
+        </FitCard>
+      </div>
+      <div className="dd-lineup-mobile">
         <LineupBuilder game={game} players={gameRoster} />
-      </FitCard>
+      </div>
     </div>
   );
 }
