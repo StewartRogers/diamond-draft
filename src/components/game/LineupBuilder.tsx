@@ -6,7 +6,7 @@ import { useDiamondDraftStore } from "@/lib/store";
 import type { Game, Player, RuleViolation } from "@/lib/types";
 import type { CellValue, EditDescriptor, FieldPos, Schedule, SortMode, ViewMode } from "./lineup/shared";
 import { CSS, PAL, isField, fmtName, gameToSchedule, scheduleToInnings } from "./lineup/shared";
-import { GridView, SortSeg, ViewToggle, InningStepper } from "./lineup/GridView";
+import { GridView, MobileGridView, SortSeg, ViewToggle, InningStepper } from "./lineup/GridView";
 import { FieldView } from "./lineup/FieldView";
 import { CellPopover, PositionPopover } from "./lineup/Popovers";
 import { AvailabilityPanel } from "./lineup/AvailabilityPanel";
@@ -46,7 +46,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   // Ref always tracks the latest schedule so assign/onCell can read current state
   // without capturing a stale closure (fixes rapid double-click overwrite).
   const scheduleRef = useRef(schedule);
-  scheduleRef.current = schedule;
+  useEffect(() => { scheduleRef.current = schedule; });
   const [batting, setBatting] = useState<string[]>(() => {
     const absentIds = new Set(game.playerOverrides.filter((o) => o.status === "absent").map((o) => o.playerId));
     return game.battingOrder.filter((id) => !absentIds.has(id));
@@ -285,12 +285,12 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
           <style>{CSS}</style>
 
           {/* ── Header ── */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid #e7e4dc" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className="ddg-header">
+            <div className="ddg-header-brand">
               <span style={{ width: 24, height: 24, transform: "rotate(45deg)", background: "#3f6212", borderRadius: 5, display: "inline-block", flexShrink: 0 }} />
-              <span style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.01em", whiteSpace: "nowrap" }}>Diamond Draft</span>
+              <span className="ddg-header-brand-text" style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-.01em", whiteSpace: "nowrap" }}>Diamond Draft</span>
             </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 10, fontSize: 14, whiteSpace: "nowrap" }}>
+            <div className="ddg-header-info">
               {game.teamName && <span style={{ fontWeight: 700 }}>{game.teamName}</span>}
               {game.opponent && <>
                 <span style={{ color: "#a09a8e" }}>vs</span>
@@ -300,41 +300,43 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 · {game_date} · {numInnings} inn
               </span>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className="ddg-header-actions">
               <button
                 onClick={handleAutoFill}
                 disabled={filling}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: filling ? "#a8c47a" : "#3f6212", color: "#fff", fontWeight: 700, fontSize: 13, cursor: filling ? "wait" : "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.3 3.3l1.4 1.4M11.3 11.3l1.4 1.4M3.3 12.7l1.4-1.4M11.3 4.7l1.4-1.4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round"/><circle cx="8" cy="8" r="3" fill="#fff"/></svg>
-                {filling ? "Filling…" : "Auto-fill lineup"}
+                {filling ? "Filling…" : "Auto-fill"}
               </button>
               <button
                 onClick={handleCheckViolations}
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 14px", borderRadius: 9, border: "1px solid #d6d2c8", background: "#fff", color: "#57534a", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
               >
                 <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="7" cy="7" r="5.5"/><path d="M7 4.5v3M7 9.5v.5"/></svg>
-                Check lineup
+                Check
               </button>
               {(autoLog.length > 0 || autoWarnings.length > 0) && (
                 <button
                   onClick={() => setShowLog(true)}
+                  className="ddg-header-log-btn"
                   style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 14px", borderRadius: 9, border: "1px solid #d6d2c8", background: "#fff", color: "#57534a", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
                 >
-                  📋 Auto-fill log
+                  Log
                   {autoWarnings.length > 0 && (
-                    <span style={{ color: "#b45309", fontSize: 11.5, fontWeight: 600 }}>({autoWarnings.length} ⚠)</span>
+                    <span style={{ color: "#b45309", fontSize: 11.5, fontWeight: 600 }}>({autoWarnings.length})</span>
                   )}
                 </button>
               )}
               <button
                 onClick={() => router.push(`/games/${game.id}/export`)}
+                className="ddg-header-print-btn"
                 style={{ display: "inline-flex", alignItems: "center", gap: 7, height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: "#3f6212", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit" }}
               >
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4 6V2.5h8V6M4 12h8v2.5H4zM3 6h10a1 1 0 011 1v4H2V7a1 1 0 011-1z" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round"/></svg>
-                Print · 1 page
+                Print
               </button>
-              <span style={{ width: 1, height: 24, background: "#e7e4dc", flexShrink: 0 }} />
+              <span className="ddg-header-sep" style={{ width: 1, height: 24, background: "#e7e4dc", flexShrink: 0 }} />
               {game.status === "draft" ? (
                 <button
                   onClick={handleFinalize}
@@ -365,16 +367,16 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
           </div>
 
           {/* ── Toolbar ── */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 22px", borderBottom: "1px solid #e7e4dc", background: "#fcfbf8" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div className="ddg-toolbar">
+            <div className="ddg-toolbar-left">
               <ViewToggle view={view} setView={setView} />
-              <span style={{ width: 1, height: 20, background: "#e3e0d8" }} />
+              <span className="ddg-toolbar-sep" style={{ width: 1, height: 20, background: "#e3e0d8" }} />
               {view === "grid" ? (
                 <>
                   <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#6f6a60" }}>Order by</span>
                   <SortSeg sort={sort} setSort={setSort} />
                   {sort === "bat" && (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#a09a8e" }}>
+                    <span className="ddg-toolbar-hint" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#a09a8e" }}>
                       <span className="grip" style={{ opacity: 0.5 }}><i /><i /><i /></span>
                       drag a row · click any cell to assign
                     </span>
@@ -384,15 +386,15 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
                 <>
                   <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#6f6a60" }}>Inning</span>
                   <InningStepper inning={inning} numInnings={numInnings} setInning={setInning} />
-                  <span style={{ fontSize: 12, color: "#a09a8e" }}>· step through all {numInnings} innings</span>
+                  <span className="ddg-toolbar-hint" style={{ fontSize: 12, color: "#a09a8e" }}>· step through all {numInnings} innings</span>
                 </>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div className="ddg-toolbar-right">
               {violations > 0 ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#9a3412", background: "#f6e7df", border: "1px solid #eccfc0", borderRadius: 999, padding: "5px 11px" }}>
                   <span style={{ width: 6, height: 6, borderRadius: 9, background: "#9a3412" }} />
-                  {violations} rule violation{violations > 1 ? "s" : ""}
+                  {violations} violation{violations > 1 ? "s" : ""}
                 </span>
               ) : (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600, color: "#3f6212", background: "#eef1e3", border: "1px solid #dbe3c6", borderRadius: 999, padding: "5px 11px" }}>
@@ -404,27 +406,52 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
           </div>
 
           {/* ── Body: Grid or Field ── */}
-          {view === "grid" ? (
-            <GridView
-              rows={rows} byId={byId} battingSlot={battingSlot}
-              schedule={schedule} numInnings={numInnings}
-              scratchedIds={scratchedIds} sort={sort}
-              onGrip={onGrip} editKey={editKey} onCell={onCell}
-              onFieldPerInning={onFieldPerInning}
-            />
-          ) : (
-            <FieldView
-              schedule={schedule} batting={batting} players={players}
-              inning={inning}
-              onCellEdit={onCell}
-              onPosEdit={onPos}
-              onDirectBench={onDirectBench}
-            />
-          )}
+          {/* Desktop grid */}
+          <div className="ddg-body-desktop">
+            {view === "grid" ? (
+              <GridView
+                rows={rows} byId={byId} battingSlot={battingSlot}
+                schedule={schedule} numInnings={numInnings}
+                scratchedIds={scratchedIds} sort={sort}
+                onGrip={onGrip} editKey={editKey} onCell={onCell}
+                onFieldPerInning={onFieldPerInning}
+              />
+            ) : (
+              <FieldView
+                schedule={schedule} batting={batting} players={players}
+                inning={inning}
+                onCellEdit={onCell}
+                onPosEdit={onPos}
+                onDirectBench={onDirectBench}
+              />
+            )}
+          </div>
+          {/* Mobile grid: paginated innings */}
+          <div className="ddg-body-mobile">
+            {view === "grid" ? (
+              <MobileGridView
+                rows={rows} byId={byId} battingSlot={battingSlot}
+                schedule={schedule} numInnings={numInnings}
+                scratchedIds={scratchedIds} sort={sort}
+                onGrip={onGrip} editKey={editKey} onCell={onCell}
+                onFieldPerInning={onFieldPerInning}
+              />
+            ) : (
+              <div className="ddg-field-mobile">
+                <FieldView
+                  schedule={schedule} batting={batting} players={players}
+                  inning={inning}
+                  onCellEdit={onCell}
+                  onPosEdit={onPos}
+                  onDirectBench={onDirectBench}
+                />
+              </div>
+            )}
+          </div>
 
           {/* ── Footer ── */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 22px", background: "#fcfbf8", borderTop: "1px solid #e7e4dc", flexWrap: "wrap", gap: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div className="ddg-footer">
+            <div className="ddg-footer-legend">
               {(["inf", "out", "bat"] as const).map((k) => (
                 <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 7, fontSize: 12, color: "#6f6a60" }}>
                   <span style={{ width: 22, height: 16, borderRadius: 4, background: PAL[k].bg, border: `1px solid ${PAL[k].fg}22`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-ibm-mono),'IBM Plex Mono',monospace", fontSize: 8.5, fontWeight: 600, color: PAL[k].fg }}>

@@ -25,6 +25,7 @@ export default function Nav() {
   const teamName = useDiamondDraftStore((s) => s.settings.teamName);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +47,14 @@ export default function Nav() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [menuOpen]);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
+
   if (pathname === "/login" || pathname === "/setup") return null;
 
   const isActive = (href: string) =>
@@ -61,161 +70,150 @@ export default function Nav() {
   };
 
   return (
-    <nav
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 20,
-        display: "flex",
-        alignItems: "center",
-        gap: 26,
-        height: 64,
-        padding: "0 30px",
-        background: "rgba(255,255,255,.86)",
-        backdropFilter: "saturate(1.4) blur(10px)",
-        WebkitBackdropFilter: "saturate(1.4) blur(10px)",
-        borderBottom: "1px solid #e7e4dc",
-        fontFamily: "var(--font-sans)",
-      }}
-    >
-      {/* Brand */}
-      <Link
-        href="/"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 11,
-          fontWeight: 800,
-          fontSize: 17,
-          letterSpacing: "-.01em",
-          whiteSpace: "nowrap",
-          textDecoration: "none",
-          color: "#211f1b",
-          cursor: "pointer",
-        }}
-      >
-        <span
-          style={{
-            width: 24, height: 24,
-            background: "#3f6212",
-            borderRadius: 5,
-            transform: "rotate(45deg)",
-            flexShrink: 0,
-            display: "inline-block",
-          }}
-        />
-        Diamond Draft
-      </Link>
+    <>
+      <nav className="dd-nav">
+        {/* Brand */}
+        <Link href="/" className="dd-nav-brand">
+          <span className="dd-nav-diamond" />
+          <span className="dd-nav-brand-text">Diamond Draft</span>
+        </Link>
 
-      {/* Nav links */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        {links.map(({ href, label }) => {
-          const active = isActive(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              style={{
-                padding: "7px 14px",
-                borderRadius: 9,
-                fontSize: 14,
-                fontWeight: 600,
-                color: active ? "#3f6212" : "#6f6a60",
-                background: active ? "#eef1e3" : "transparent",
-                textDecoration: "none",
-                transition: "background .12s, color .12s",
-              }}
-              onMouseEnter={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLElement).style.color = "#211f1b";
-                  (e.currentTarget as HTMLElement).style.background = "#f1efe8";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  (e.currentTarget as HTMLElement).style.color = "#6f6a60";
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                }
-              }}
-            >
-              {label}
-            </Link>
-          );
-        })}
-      </div>
+        {/* Desktop nav links */}
+        <div className="dd-nav-links">
+          {links.map(({ href, label }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`dd-nav-link ${active ? "active" : ""}`}
+              >
+                {label}
+              </Link>
+            );
+          })}
+        </div>
 
-      {/* User menu */}
-      <div ref={menuRef} style={{ marginLeft: "auto", position: "relative" }}>
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          style={{
-            width: 34, height: 34,
-            borderRadius: 999,
-            background: "#2b2a26",
-            color: "#f3f1ec",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 700,
-            fontSize: 14,
-            flexShrink: 0,
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {initial}
-        </button>
-
-        {menuOpen && (
-          <div
-            style={{
-              position: "absolute",
-              right: 0,
-              top: 42,
-              background: "#fff",
-              borderRadius: 10,
-              border: "1.5px solid #e7e4dc",
-              boxShadow: "0 8px 24px rgba(0,0,0,.12)",
-              minWidth: 200,
-              padding: "8px 0",
-              zIndex: 30,
-            }}
+        {/* Desktop user menu */}
+        <div ref={menuRef} className="dd-nav-user">
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="dd-nav-avatar"
           >
+            {initial}
+          </button>
+
+          {menuOpen && (
+            <div className="dd-nav-dropdown">
+              {authUser && (
+                <div style={{ padding: "10px 16px", borderBottom: "1px solid #e7e4dc" }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{authUser.displayName}</div>
+                  <div style={{ fontSize: 12, color: "#6f6a60" }}>@{authUser.username}</div>
+                  <div style={{ fontSize: 11, color: "#9c9688", marginTop: 2 }}>
+                    {authUser.role === "superuser" ? "Admin" : "User"}
+                  </div>
+                </div>
+              )}
+
+              {authUser?.role === "superuser" && (
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/users");
+                  }}
+                  style={menuItemStyle}
+                >
+                  Manage Users
+                </button>
+              )}
+
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  handleLogout();
+                }}
+                style={{ ...menuItemStyle, color: "#dc2626" }}
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile hamburger */}
+        <button
+          className="dd-nav-hamburger"
+          onClick={() => setMobileOpen(!mobileOpen)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+        >
+          {mobileOpen ? (
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#211f1b" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M5 5l12 12M17 5L5 17"/>
+            </svg>
+          ) : (
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="#211f1b" strokeWidth="1.8" strokeLinecap="round">
+              <path d="M3 6h16M3 11h16M3 16h16"/>
+            </svg>
+          )}
+        </button>
+      </nav>
+
+      {/* Mobile slide-down menu */}
+      {mobileOpen && (
+        <div className="dd-mobile-overlay" onClick={() => setMobileOpen(false)}>
+          <div className="dd-mobile-menu" onClick={(e) => e.stopPropagation()}>
+            {/* Nav links */}
+            {links.map(({ href, label }) => {
+              const active = isActive(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={`dd-mobile-link ${active ? "active" : ""}`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+
+            {/* Divider */}
+            <div style={{ height: 1, background: "#e7e4dc", margin: "4px 0" }} />
+
+            {/* User info */}
             {authUser && (
-              <div style={{ padding: "10px 16px", borderBottom: "1px solid #e7e4dc" }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{authUser.displayName}</div>
-                <div style={{ fontSize: 12, color: "#6f6a60" }}>@{authUser.username}</div>
-                <div style={{ fontSize: 11, color: "#9c9688", marginTop: 2 }}>
-                  {authUser.role === "superuser" ? "Admin" : "User"}
+              <div style={{ padding: "12px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="dd-nav-avatar" style={{ width: 32, height: 32, fontSize: 13 }}>
+                  {initial}
+                </span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{authUser.displayName}</div>
+                  <div style={{ fontSize: 12, color: "#6f6a60" }}>@{authUser.username}</div>
                 </div>
               </div>
             )}
 
             {authUser?.role === "superuser" && (
-              <button
-                onClick={() => {
-                  setMenuOpen(false);
-                  router.push("/users");
-                }}
-                style={menuItemStyle}
+              <Link
+                href="/users"
+                className="dd-mobile-link"
+                onClick={() => setMobileOpen(false)}
               >
                 Manage Users
-              </button>
+              </Link>
             )}
 
             <button
-              onClick={() => {
-                setMenuOpen(false);
-                handleLogout();
-              }}
-              style={{ ...menuItemStyle, color: "#dc2626" }}
+              className="dd-mobile-link"
+              onClick={() => { setMobileOpen(false); handleLogout(); }}
+              style={{ color: "#dc2626", border: "none", background: "none", width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit" }}
             >
               Sign Out
             </button>
           </div>
-        )}
-      </div>
-    </nav>
+        </div>
+      )}
+    </>
   );
 }
 

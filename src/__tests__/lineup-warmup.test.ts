@@ -47,7 +47,7 @@ describe("applyWarmupBullpen — basic filling", () => {
   it("catcher from inning 2 fills Bullpen-C in inning 1 (locked)", () => {
     const pitcher = makePlayer();
     const catcher = makePlayer();
-    let innings = [createEmptyInning(1), createEmptyInning(2)];
+    const innings = [createEmptyInning(1), createEmptyInning(2)];
     innings[1] = setSlot(innings[1], "P", pitcher.id);
     innings[1] = setSlot(innings[1], "C", catcher.id);
 
@@ -194,7 +194,7 @@ describe("applyWarmupBullpen — catcher in locked slot in N-1", () => {
   it("does not move catcher to Bullpen-C if they are locked in a field slot in N-1", () => {
     const pitcher = makePlayer();
     const catcher = makePlayer();
-    let innings = [createEmptyInning(1), createEmptyInning(2)];
+    const innings = [createEmptyInning(1), createEmptyInning(2)];
     // Catcher is locked to 1B in inning 1
     innings[0] = setSlot(innings[0], "1B", catcher.id, true);
     innings[1] = setSlot(innings[1], "P", pitcher.id);
