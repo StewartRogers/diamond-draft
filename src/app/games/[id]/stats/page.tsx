@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useDiamondDraftStore } from "@/lib/store";
 import type { HittingStats, PitchingGameStats, GameStats, Player } from "@/lib/types";
@@ -179,21 +179,15 @@ export default function GameStatsPage({ params }: { params: Promise<{ id: string
     return init;
   });
 
-  const updateHit = useCallback(
-    (playerId: string, field: keyof Omit<HittingStats, "playerId">, val: number) => {
-      setHitting((prev) => ({ ...prev, [playerId]: { ...prev[playerId], [field]: val } }));
-      setSaved(false);
-    },
-    []
-  );
+  const updateHit = (playerId: string, field: keyof Omit<HittingStats, "playerId">, val: number) => {
+    setHitting((prev) => ({ ...prev, [playerId]: { ...prev[playerId], [field]: val } }));
+    setSaved(false);
+  };
 
-  const updatePitch = useCallback(
-    (playerId: string, field: keyof Omit<PitchingGameStats, "playerId">, val: number) => {
-      setPitching((prev) => ({ ...prev, [playerId]: { ...prev[playerId], [field]: val } }));
-      setSaved(false);
-    },
-    []
-  );
+  const updatePitch = (playerId: string, field: keyof Omit<PitchingGameStats, "playerId">, val: number) => {
+    setPitching((prev) => ({ ...prev, [playerId]: { ...prev[playerId], [field]: val } }));
+    setSaved(false);
+  };
 
   async function handleSave() {
     if (!game) return;

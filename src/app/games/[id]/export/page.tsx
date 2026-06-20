@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { use, useEffect } from "react";
+import { use } from "react";
 import { useDiamondDraftStore } from "@/lib/store";
 
 const PRINT_INNINGS = 7;

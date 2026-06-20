@@ -46,7 +46,7 @@ export default function LineupBuilder({ game, players }: LineupBuilderProps) {
   // Ref always tracks the latest schedule so assign/onCell can read current state
   // without capturing a stale closure (fixes rapid double-click overwrite).
   const scheduleRef = useRef(schedule);
-  scheduleRef.current = schedule;
+  useEffect(() => { scheduleRef.current = schedule; });
   const [batting, setBatting] = useState<string[]>(() => {
     const absentIds = new Set(game.playerOverrides.filter((o) => o.status === "absent").map((o) => o.playerId));
     return game.battingOrder.filter((id) => !absentIds.has(id));
