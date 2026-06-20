@@ -153,7 +153,7 @@ function computePitchStats(players: Player[], games: Game[]): PlayerPitchStats[]
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
 type PlaySortKey = "jersey" | "name" | "games" | "field" | "bench" | FieldPosition;
-type BatSortKey = "jersey" | "name" | "games" | "ab" | "h" | "bb" | "avg" | "obp";
+type BatSortKey = "jersey" | "name" | "games" | "pa" | "ab" | "h" | "bb" | "avg" | "obp";
 type PitchSortKey = "jersey" | "name" | "games" | "ip" | "pitches" | "k" | "h" | "bb" | "whip";
 
 function sortPlay(rows: PlayerPlayStats[], key: PlaySortKey, dir: "asc" | "desc") {
@@ -175,6 +175,7 @@ function sortBat(rows: PlayerBatStats[], key: BatSortKey, dir: "asc" | "desc") {
     if (key === "jersey") v = Number(a.player.jerseyNumber) - Number(b.player.jerseyNumber);
     else if (key === "name") v = a.player.firstName.localeCompare(b.player.firstName);
     else if (key === "games") v = a.gamesPlayed - b.gamesPlayed;
+    else if (key === "pa") v = a.plateAppearances - b.plateAppearances;
     else if (key === "ab") v = (a.plateAppearances - a.walks) - (b.plateAppearances - b.walks);
     else if (key === "h") v = a.hits - b.hits;
     else if (key === "bb") v = a.walks - b.walks;
@@ -404,6 +405,7 @@ function BattingView({ players, games }: { players: Player[]; games: Game[] }) {
           <tr>
             <Th label="Player" sortKey="name" current={sort} dir={sortDir} onSort={handleSort} style={{ textAlign: "left", paddingLeft: 16 }} />
             <Th label="G" sortKey="games" current={sort} dir={sortDir} onSort={handleSort} title="Games with stats logged" />
+            <Th label="PA" sortKey="pa" current={sort} dir={sortDir} onSort={handleSort} title="Plate appearances" />
             <Th label="AB" sortKey="ab" current={sort} dir={sortDir} onSort={handleSort} title="At bats (PA − BB)" />
             <Th label="H" sortKey="h" current={sort} dir={sortDir} onSort={handleSort} title="Hits" />
             <Th label="BB" sortKey="bb" current={sort} dir={sortDir} onSort={handleSort} title="Walks (base on balls)" />
@@ -420,6 +422,7 @@ function BattingView({ players, games }: { players: Player[]; games: Game[] }) {
               <tr key={row.player.id} style={{ background: i % 2 === 0 ? C.card : C.sub }}>
                 <PlayerNameCell player={row.player} />
                 <td style={{ padding: "10px 8px", textAlign: "center", verticalAlign: "middle" }}><MonoNum val={row.gamesPlayed} /></td>
+                <td style={{ padding: "10px 8px", textAlign: "center", verticalAlign: "middle" }}><MonoNum val={row.plateAppearances} /></td>
                 <td style={{ padding: "10px 8px", textAlign: "center", verticalAlign: "middle" }}><MonoNum val={ab} /></td>
                 <td style={{ padding: "10px 8px", textAlign: "center", verticalAlign: "middle" }}><MonoNum val={row.hits} /></td>
                 <td style={{ padding: "10px 8px", textAlign: "center", verticalAlign: "middle" }}><MonoNum val={row.walks} /></td>
@@ -429,6 +432,30 @@ function BattingView({ players, games }: { players: Player[]; games: Game[] }) {
             );
           })}
         </tbody>
+        <tfoot>
+          {(() => {
+            const totG = Math.max(...stats.map((s) => s.gamesPlayed));
+            const totPA = stats.reduce((s, r) => s + r.plateAppearances, 0);
+            const totH = stats.reduce((s, r) => s + r.hits, 0);
+            const totBB = stats.reduce((s, r) => s + r.walks, 0);
+            const totAB = Math.max(0, totPA - totBB);
+            const avg = totAB > 0 ? (totH / totAB).toFixed(3).replace(/^0/, "") : ".000";
+            const obp = totPA > 0 ? ((totH + totBB) / totPA).toFixed(3).replace(/^0/, "") : ".000";
+            const tStyle: React.CSSProperties = { padding: "10px 8px", textAlign: "center", verticalAlign: "middle", borderTop: `2px solid ${C.line}`, background: C.sub };
+            return (
+              <tr>
+                <td style={{ ...tStyle, textAlign: "left", paddingLeft: 16, fontWeight: 700, fontSize: 13, color: C.ink }}>Total</td>
+                <td style={tStyle}><MonoNum val={totG} /></td>
+                <td style={tStyle}><MonoNum val={totPA} /></td>
+                <td style={tStyle}><MonoNum val={totAB} /></td>
+                <td style={tStyle}><MonoNum val={totH} /></td>
+                <td style={tStyle}><MonoNum val={totBB} /></td>
+                <td style={tStyle}><MonoNum val={avg} /></td>
+                <td style={tStyle}><MonoNum val={obp} /></td>
+              </tr>
+            );
+          })()}
+        </tfoot>
       </table>
     </div>
   );
@@ -483,6 +510,31 @@ function PitchingView({ players, games }: { players: Player[]; games: Game[] }) 
             );
           })}
         </tbody>
+        <tfoot>
+          {(() => {
+            const totG = Math.max(...active.map((s) => s.gamesPlayed), 0);
+            const totIP = active.reduce((s, r) => addIP(s, r.inningsPitched), 0);
+            const totP = active.reduce((s, r) => s + r.pitches, 0);
+            const totK = active.reduce((s, r) => s + r.strikeouts, 0);
+            const totH = active.reduce((s, r) => s + r.hitsAllowed, 0);
+            const totBB = active.reduce((s, r) => s + r.walksAllowed, 0);
+            const totIPDec = ipToDecimal(totIP);
+            const whip = totIPDec > 0 ? ((totH + totBB) / totIPDec).toFixed(2) : "0.00";
+            const tStyle: React.CSSProperties = { padding: "10px 8px", textAlign: "center", verticalAlign: "middle", borderTop: `2px solid ${C.line}`, background: C.sub };
+            return (
+              <tr>
+                <td style={{ ...tStyle, textAlign: "left", paddingLeft: 16, fontWeight: 700, fontSize: 13, color: C.ink }}>Total</td>
+                <td style={tStyle}><MonoNum val={totG} /></td>
+                <td style={tStyle}><MonoNum val={formatIP(totIP)} /></td>
+                <td style={tStyle}><MonoNum val={totP} /></td>
+                <td style={tStyle}><MonoNum val={totK} /></td>
+                <td style={tStyle}><MonoNum val={totH} /></td>
+                <td style={tStyle}><MonoNum val={totBB} /></td>
+                <td style={tStyle}><MonoNum val={whip} /></td>
+              </tr>
+            );
+          })()}
+        </tfoot>
       </table>
       <div style={{ padding: "10px 16px", borderTop: `1px solid ${C.line}`, background: C.sub, fontSize: 11.5, color: C.faint }}>
         IP uses baseball notation: 2.1 = 2⅓ innings, 2.2 = 2⅔ innings
