@@ -6,7 +6,7 @@
     "test": "vitest run",
     "eval": "vitest run --config vitest.eval.config.ts",
     "typecheck": "tsc --noEmit",
-    "predev": "rm -rf .next/cache",
+    "predev": "node -e \"require('fs').rm('.next/cache',{recursive:true,force:true},()=>{})\"",
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev -p 4000",
     "dev:vite": "vite --port 6000",
     "build": "next build",
@@ -16,6 +16,7 @@
   "dependencies": {
     "@google/genai": "^2.8.0",
     "@libsql/client": "^0.17.4",
+    "@vercel/analytics": "^2.0.1",
     "immer": "^11.1.8",
     "next": "^16.2.9",
     "react": "^19.2.7",
