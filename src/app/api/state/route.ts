@@ -2,18 +2,20 @@ import {
   clearAllData,
   getAllGames,
   getAllPlayers,
+  getAllTeams,
   getAllSeasons,
   getSettings,
   restoreBackup,
 } from "@/lib/server/db";
 import { requireUser, requireSuperuser } from "@/lib/server/auth";
-import type { AppSettings, Game, Player, Season } from "@/lib/types";
+import type { AppSettings, Game, Player, Season, Team } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 type Backup = {
   players: Player[];
   games: Game[];
+  teams: Team[];
   seasons: Season[];
   settings: AppSettings;
 };
@@ -21,10 +23,10 @@ type Backup = {
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
-  const [players, games, seasons, settings] = await Promise.all([
-    getAllPlayers(), getAllGames(), getAllSeasons(), getSettings(),
+  const [players, games, teams, seasons, settings] = await Promise.all([
+    getAllPlayers(), getAllGames(), getAllTeams(), getAllSeasons(), getSettings(),
   ]);
-  return Response.json({ players, games, seasons, settings } satisfies Backup);
+  return Response.json({ players, games, teams, seasons, settings } satisfies Backup);
 }
 
 export async function PUT(request: Request) {
@@ -37,6 +39,7 @@ export async function PUT(request: Request) {
   await restoreBackup({
     players: Array.isArray(backup.players) ? backup.players : [],
     games: Array.isArray(backup.games) ? backup.games : [],
+    teams: Array.isArray(backup.teams) ? backup.teams : [],
     seasons: Array.isArray(backup.seasons) ? backup.seasons : [],
     settings: backup.settings ?? {},
   });

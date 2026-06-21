@@ -32,6 +32,8 @@ let db: typeof import("@/lib/server/db");
 let playersRoute: typeof import("@/app/api/players/route");
 let playerIdRoute: typeof import("@/app/api/players/[id]/route");
 let gameIdRoute: typeof import("@/app/api/games/[id]/route");
+let teamsRoute: typeof import("@/app/api/teams/route");
+let teamIdRoute: typeof import("@/app/api/teams/[id]/route");
 let stateRoute: typeof import("@/app/api/state/route");
 let pitchPlanRoute: typeof import("@/app/api/ai/pitch-plan/route");
 
@@ -44,6 +46,8 @@ beforeAll(async () => {
   playersRoute = await import("@/app/api/players/route");
   playerIdRoute = await import("@/app/api/players/[id]/route");
   gameIdRoute = await import("@/app/api/games/[id]/route");
+  teamsRoute = await import("@/app/api/teams/route");
+  teamIdRoute = await import("@/app/api/teams/[id]/route");
   stateRoute = await import("@/app/api/state/route");
   pitchPlanRoute = await import("@/app/api/ai/pitch-plan/route");
 });
@@ -142,14 +146,73 @@ describe("/api/games/[id]", () => {
   });
 });
 
+describe("/api/teams", () => {
+  it("POST creates a team and returns 201", async () => {
+    const team = { id: "team-api", name: "Owls", createdAt: "2026-01-01T00:00:00.000Z" };
+    const res = await teamsRoute.POST(jsonRequest("POST", team));
+    expect(res.status).toBe(201);
+    expect(await db.getTeam("team-api")).toEqual(team);
+  });
+
+  it("POST rejects a team without an id", async () => {
+    const res = await teamsRoute.POST(jsonRequest("POST", { name: "NoId" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("GET lists teams", async () => {
+    const res = await teamsRoute.GET(jsonRequest("GET", null));
+    const body = await res.json();
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.some((t: { id: string }) => t.id === "team-api")).toBe(true);
+  });
+
+  it("[id] PUT forces the URL id over the body id, then DELETE removes it", async () => {
+    const team = { id: "team-edit", name: "Before", createdAt: "2026-01-01T00:00:00.000Z" };
+    await db.saveTeam(team);
+    const put = await teamIdRoute.PUT(
+      jsonRequest("PUT", { ...team, id: "spoofed", name: "After" }),
+      params(team.id)
+    );
+    expect(put.status).toBe(200);
+    expect((await db.getTeam("team-edit"))?.name).toBe("After");
+    expect(await db.getTeam("spoofed")).toBeUndefined();
+
+    const del = await teamIdRoute.DELETE(jsonRequest("DELETE", null), params(team.id));
+    expect(del.status).toBe(204);
+    expect(await db.getTeam("team-edit")).toBeUndefined();
+  });
+
+  it("[id] GET returns 404 for an unknown team", async () => {
+    const res = await teamIdRoute.GET(jsonRequest("GET", null), params("missing"));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("/api/state (backup / wipe)", () => {
-  it("GET exports players, games, seasons, and settings", async () => {
+  it("GET exports players, games, teams, seasons, and settings", async () => {
     await db.saveGame(makeGame("state-game"));
     const res = await stateRoute.GET(jsonRequest("GET", null));
     const body = await res.json();
     expect(body.games.some((g: Game) => g.id === "state-game")).toBe(true);
     expect(Array.isArray(body.players)).toBe(true);
+    expect(Array.isArray(body.teams)).toBe(true);
+    expect(Array.isArray(body.seasons)).toBe(true);
     expect(body.settings).toBeDefined();
+  });
+
+  it("PUT round-trips teams in a v2 backup", async () => {
+    const team = { id: "team-bk", name: "Backup FC", createdAt: "2026-01-01T00:00:00.000Z" };
+    const res = await stateRoute.PUT(
+      jsonRequest("PUT", {
+        players: [],
+        games: [],
+        teams: [team],
+        seasons: [],
+        settings: { ...DEFAULT_APP_SETTINGS, activeTeamId: "team-bk" },
+      })
+    );
+    expect(res.status).toBe(200);
+    expect(await db.getTeam("team-bk")).toEqual(team);
   });
 
   it("PUT restores a backup, replacing existing data", async () => {

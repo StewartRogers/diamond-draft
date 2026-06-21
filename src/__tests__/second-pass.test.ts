@@ -80,7 +80,7 @@ function makeGame(id: string, overrides: Partial<Game> = {}): Game {
 }
 
 function makeSeason(id: string, gameIds: string[] = []): Season {
-  return { id, name: "Season", teamName: "Eagles", year: 2026, gameIds, createdAt: "2026-01-01T00:00:00.000Z" };
+  return { id, name: "Season", teamId: "team-1", teamName: "Eagles", year: 2026, roster: [], gameIds, createdAt: "2026-01-01T00:00:00.000Z" };
 }
 
 function resetStore() {

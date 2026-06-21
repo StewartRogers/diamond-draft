@@ -4,11 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useDiamondDraftStore } from "@/lib/store";
 import { useState, useRef, useEffect } from "react";
+import TeamSeasonSwitcher from "./TeamSeasonSwitcher";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/games", label: "Games" },
   { href: "/roster", label: "Roster" },
+  { href: "/players", label: "Players" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -94,6 +96,11 @@ export default function Nav() {
           })}
         </div>
 
+        {/* Team / season switcher (desktop) */}
+        <div className="dd-nav-switcher">
+          <TeamSeasonSwitcher variant="desktop" />
+        </div>
+
         {/* Desktop user menu */}
         <div ref={menuRef} className="dd-nav-user">
           <button
@@ -162,6 +169,12 @@ export default function Nav() {
       {mobileOpen && (
         <div className="dd-mobile-overlay" onClick={() => setMobileOpen(false)}>
           <div className="dd-mobile-menu" onClick={(e) => e.stopPropagation()}>
+            {/* Team / season switcher (mobile) */}
+            <div style={{ padding: "12px 16px" }}>
+              <TeamSeasonSwitcher variant="mobile" />
+            </div>
+            <div style={{ height: 1, background: "#e7e4dc", margin: "4px 0" }} />
+
             {/* Nav links */}
             {links.map(({ href, label }) => {
               const active = isActive(href);

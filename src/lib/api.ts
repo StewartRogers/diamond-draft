@@ -3,7 +3,7 @@
  * The Zustand store uses these exclusively; the server persists to SQLite.
  */
 
-import type { AppSettings, Game, Player, Season } from "./types";
+import type { AppSettings, Game, Player, Season, Team } from "./types";
 
 async function request<T>(
   path: string,
@@ -27,6 +27,7 @@ async function request<T>(
 export type FullState = {
   players: Player[];
   games: Game[];
+  teams: Team[];
   seasons: Season[];
   settings: AppSettings;
 };
@@ -88,6 +89,26 @@ export async function deleteGame(id: string): Promise<void> {
   await request(`/api/games/${id}`, { method: "DELETE" });
 }
 
+// ─── Teams ────────────────────────────────────────────────────────────────────
+
+export async function saveTeam(team: Team): Promise<Team> {
+  return request<Team>(`/api/teams/${team.id}`, {
+    method: "PUT",
+    body: JSON.stringify(team),
+  });
+}
+
+export async function createTeam(team: Team): Promise<Team> {
+  return request<Team>("/api/teams", {
+    method: "POST",
+    body: JSON.stringify(team),
+  });
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  await request(`/api/teams/${id}`, { method: "DELETE" });
+}
+
 // ─── Seasons ──────────────────────────────────────────────────────────────────
 
 export async function saveSeason(season: Season): Promise<Season> {
@@ -128,7 +149,7 @@ export async function exportAllData(): Promise<FullBackup> {
   const state = await loadAll();
   return {
     ...state,
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
   };
 }

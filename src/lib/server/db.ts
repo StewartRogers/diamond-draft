@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { Client } from "@libsql/client";
-import type { AppSettings, Game, Player, Season } from "../types";
+import type { AppSettings, Game, Player, Season, Team } from "../types";
 import { DEFAULT_APP_SETTINGS } from "../types";
 import * as seasonLib from "../season";
 import { getSharedClient, ensureWalMode } from "./connection";
@@ -20,7 +20,7 @@ const DEFAULT_ROSTER_SEED = [
 
 const globalDataDb = globalThis as typeof globalThis & {
   __dd_data_db_initialized?: boolean;
-  __dd_data_db_seeded?: boolean;
+  __dd_data_db_ready?: Promise<void>;
 };
 
 async function ensureSchema(): Promise<Client> {
@@ -39,6 +39,10 @@ async function ensureSchema(): Promise<Client> {
       data TEXT NOT NULL
     )`,
     "CREATE INDEX IF NOT EXISTS idx_games_date ON games(date)",
+    `CREATE TABLE IF NOT EXISTS teams (
+      id TEXT PRIMARY KEY,
+      data TEXT NOT NULL
+    )`,
     `CREATE TABLE IF NOT EXISTS seasons (
       id TEXT PRIMARY KEY,
       data TEXT NOT NULL
@@ -53,15 +57,31 @@ async function ensureSchema(): Promise<Client> {
   return db;
 }
 
-async function seedDefaultPlayersIfNeeded(): Promise<void> {
-  if (globalDataDb.__dd_data_db_seeded) return;
-  const db = await ensureSchema();
-  const result = await db.execute("SELECT COUNT(*) as count FROM players");
-  const count = Number(result.rows[0]?.count ?? 0);
-  if (count > 0) {
-    globalDataDb.__dd_data_db_seeded = true;
-    return;
+/**
+ * Ensure the schema exists, the default roster is seeded on a fresh DB, and the
+ * data has been migrated to the multi-team model. Memoized as a single promise
+ * so concurrent callers (e.g. the parallel bootstrap reads) don't double-run.
+ */
+async function ensureData(): Promise<void> {
+  if (!globalDataDb.__dd_data_db_ready) {
+    const ready = (async () => {
+      await ensureSchema();
+      await seedDefaultPlayers();
+      await migrateToMultiTeam();
+    })();
+    globalDataDb.__dd_data_db_ready = ready;
+    // Don't cache a rejected promise — allow a later call to retry.
+    ready.catch(() => {
+      globalDataDb.__dd_data_db_ready = undefined;
+    });
   }
+  return globalDataDb.__dd_data_db_ready;
+}
+
+async function seedDefaultPlayers(): Promise<void> {
+  const db = getSharedClient("__dd_data_db");
+  const result = await db.execute("SELECT COUNT(*) as count FROM players");
+  if (Number(result.rows[0]?.count ?? 0) > 0) return;
   await savePlayers(
     DEFAULT_ROSTER_SEED.map((player) =>
       seasonLib.createPlayer({
@@ -73,18 +93,106 @@ async function seedDefaultPlayersIfNeeded(): Promise<void> {
       })
     )
   );
-  globalDataDb.__dd_data_db_seeded = true;
+}
+
+/**
+ * One-time migration to the multi-team model. Runs when no Team exists yet:
+ * wraps all current data into a single Team, attaches every season to it
+ * (defaulting each season's roster to the full player list), and creates a
+ * default season when none exist so there is always an active context.
+ * Uses raw reads to avoid recursing through ensureData().
+ */
+async function migrateToMultiTeam(): Promise<void> {
+  const db = getSharedClient("__dd_data_db");
+  const teamCount = Number(
+    (await db.execute("SELECT COUNT(*) as count FROM teams")).rows[0]?.count ?? 0
+  );
+  if (teamCount > 0) return; // already migrated
+
+  const players = (await db.execute("SELECT data FROM players")).rows.map(
+    (row) => JSON.parse(row.data as string) as Player
+  );
+  const seasons = (await db.execute("SELECT data FROM seasons")).rows
+    .map((row) => JSON.parse(row.data as string) as Season)
+    // Deterministic order (earliest first) so the chosen active season is stable.
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  const settingsRow = (
+    await db.execute({ sql: "SELECT data FROM settings WHERE id = ?", args: [SETTINGS_KEY] })
+  ).rows[0];
+  const settings: AppSettings = settingsRow
+    ? (JSON.parse(settingsRow.data as string) as AppSettings)
+    : { ...DEFAULT_APP_SETTINGS };
+
+  const team = seasonLib.createTeam({
+    name: settings.teamName?.trim() || "My Team",
+    headCoach: settings.headCoach,
+    leagueDivision: settings.leagueDivision,
+  });
+
+  const allPlayerIds = players.map((p) => p.id);
+  const statements: { sql: string; args: (string | number)[] }[] = [
+    { sql: "INSERT OR REPLACE INTO teams (id, data) VALUES (?, ?)", args: [team.id, JSON.stringify(team)] },
+  ];
+
+  let activeSeasonId = settings.activeSeasonId;
+  if (seasons.length === 0) {
+    // No season yet: create one and adopt any pre-existing games so they stay
+    // visible under the new season filter.
+    const gameIds = (await db.execute("SELECT id FROM games")).rows.map(
+      (row) => row.id as string
+    );
+    const season = seasonLib.createSeason({
+      name: `${new Date().getFullYear()} Season`,
+      teamId: team.id,
+      teamName: team.name,
+      year: new Date().getFullYear(),
+      roster: allPlayerIds,
+    });
+    season.gameIds = gameIds;
+    statements.push({
+      sql: "INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)",
+      args: [season.id, JSON.stringify(season)],
+    });
+    activeSeasonId = season.id;
+  } else {
+    for (const s of seasons) {
+      const migrated: Season = {
+        ...s,
+        teamId: s.teamId || team.id,
+        teamName: s.teamName || team.name,
+        roster: s.roster && s.roster.length > 0 ? s.roster : allPlayerIds,
+        gameIds: s.gameIds ?? [],
+      };
+      statements.push({
+        sql: "INSERT OR REPLACE INTO seasons (id, data) VALUES (?, ?)",
+        args: [migrated.id, JSON.stringify(migrated)],
+      });
+    }
+    if (!activeSeasonId) activeSeasonId = seasons[0].id;
+  }
+
+  const updatedSettings: AppSettings = {
+    ...settings,
+    activeTeamId: team.id,
+    activeSeasonId,
+  };
+  statements.push({
+    sql: "INSERT OR REPLACE INTO settings (id, data) VALUES (?, ?)",
+    args: [SETTINGS_KEY, JSON.stringify(updatedSettings)],
+  });
+
+  await db.batch(statements, "write");
 }
 
 export async function getAllPlayers(): Promise<Player[]> {
-  await seedDefaultPlayersIfNeeded();
+  await ensureData();
   const db = getSharedClient("__dd_data_db");
   const result = await db.execute("SELECT data FROM players");
   return result.rows.map((row) => JSON.parse(row.data as string) as Player);
 }
 
 export async function getPlayer(id: string): Promise<Player | undefined> {
-  await seedDefaultPlayersIfNeeded();
+  await ensureData();
   const db = getSharedClient("__dd_data_db");
   const result = await db.execute({ sql: "SELECT data FROM players WHERE id = ?", args: [id] });
   const row = result.rows[0];
@@ -141,14 +249,48 @@ export async function deleteGame(id: string): Promise<void> {
   await db.execute({ sql: "DELETE FROM games WHERE id = ?", args: [id] });
 }
 
-export async function getAllSeasons(): Promise<Season[]> {
+// ─── Teams ──────────────────────────────────────────────────────────────────
+
+export async function getAllTeams(): Promise<Team[]> {
+  await ensureData();
+  const db = getSharedClient("__dd_data_db");
+  const result = await db.execute("SELECT data FROM teams");
+  return result.rows.map((row) => JSON.parse(row.data as string) as Team);
+}
+
+export async function getTeam(id: string): Promise<Team | undefined> {
+  await ensureData();
+  const db = getSharedClient("__dd_data_db");
+  const result = await db.execute({ sql: "SELECT data FROM teams WHERE id = ?", args: [id] });
+  const row = result.rows[0];
+  return row ? (JSON.parse(row.data as string) as Team) : undefined;
+}
+
+export async function saveTeam(team: Team): Promise<void> {
   const db = await ensureSchema();
+  await db.execute({
+    sql: "INSERT OR REPLACE INTO teams (id, data) VALUES (?, ?)",
+    args: [team.id, JSON.stringify(team)],
+  });
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({ sql: "DELETE FROM teams WHERE id = ?", args: [id] });
+}
+
+// ─── Seasons ────────────────────────────────────────────────────────────────
+
+export async function getAllSeasons(): Promise<Season[]> {
+  await ensureData();
+  const db = getSharedClient("__dd_data_db");
   const result = await db.execute("SELECT data FROM seasons");
   return result.rows.map((row) => JSON.parse(row.data as string) as Season);
 }
 
 export async function getSeason(id: string): Promise<Season | undefined> {
-  const db = await ensureSchema();
+  await ensureData();
+  const db = getSharedClient("__dd_data_db");
   const result = await db.execute({ sql: "SELECT data FROM seasons WHERE id = ?", args: [id] });
   const row = result.rows[0];
   return row ? (JSON.parse(row.data as string) as Season) : undefined;
@@ -170,7 +312,8 @@ export async function deleteSeason(id: string): Promise<void> {
 const SETTINGS_KEY = "app-settings";
 
 export async function getSettings(): Promise<AppSettings> {
-  const db = await ensureSchema();
+  await ensureData();
+  const db = getSharedClient("__dd_data_db");
   const result = await db.execute({ sql: "SELECT data FROM settings WHERE id = ?", args: [SETTINGS_KEY] });
   const row = result.rows[0];
   return row ? (JSON.parse(row.data as string) as AppSettings) : { ...DEFAULT_APP_SETTINGS };
@@ -189,15 +332,18 @@ export async function clearAllData(): Promise<void> {
   await db.batch([
     "DELETE FROM players",
     "DELETE FROM games",
+    "DELETE FROM teams",
     "DELETE FROM seasons",
     "DELETE FROM settings",
   ], "write");
-  globalDataDb.__dd_data_db_seeded = false;
+  // Force re-seed + re-migration on next read.
+  globalDataDb.__dd_data_db_ready = undefined;
 }
 
 export async function restoreBackup(backup: {
   players: Player[];
   games: Game[];
+  teams?: Team[];
   seasons: Season[];
   settings: AppSettings;
 }): Promise<void> {
@@ -205,9 +351,19 @@ export async function restoreBackup(backup: {
   const statements: { sql: string; args: (string | number)[] }[] = [
     { sql: "DELETE FROM players", args: [] },
     { sql: "DELETE FROM games", args: [] },
+    { sql: "DELETE FROM teams", args: [] },
     { sql: "DELETE FROM seasons", args: [] },
     { sql: "DELETE FROM settings", args: [] },
   ];
+
+  for (const team of backup.teams ?? []) {
+    if (team?.id && typeof team.id === "string") {
+      statements.push({
+        sql: "INSERT OR REPLACE INTO teams (id, data) VALUES (?, ?)",
+        args: [team.id, JSON.stringify(team)],
+      });
+    }
+  }
 
   for (const player of backup.players) {
     if (player?.id && typeof player.id === "string") {
@@ -241,5 +397,7 @@ export async function restoreBackup(backup: {
   }
 
   await db.batch(statements, "write");
-  globalDataDb.__dd_data_db_seeded = false;
+  // Reset so ensureData() re-runs: re-seeds an empty DB and migrates v1
+  // backups (no teams) into the multi-team model on the next read.
+  globalDataDb.__dd_data_db_ready = undefined;
 }
