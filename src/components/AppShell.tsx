@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useDiamondDraftStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
+import { useDiamondDraftStore, selectRosterPlayers } from "@/lib/store";
 import type { Game } from "@/lib/types";
 import { POSITION_TIER_CFG } from "@/lib/types";
 
@@ -344,7 +345,7 @@ export function NewGameModal({ onClose }: { onClose: () => void }) {
   const setPlayerOverride = useDiamondDraftStore((s) => s.setPlayerOverride);
   const defaultTeamName = useDiamondDraftStore((s) => s.settings.teamName);
   const defaultInnings = useDiamondDraftStore((s) => s.settings.leagueRules.defaultInnings);
-  const players = useDiamondDraftStore((s) => s.players);
+  const players = useDiamondDraftStore(useShallow(selectRosterPlayers));
 
   const [opponent, setOpponent] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));

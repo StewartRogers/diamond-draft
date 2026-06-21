@@ -49,8 +49,10 @@ function makeSeason(id: string, overrides: Partial<Season> = {}): Season {
   return {
     id,
     name: "Spring",
+    teamId: "team-1",
     teamName: "Tigers",
     year: 2026,
+    roster: [],
     gameIds: [],
     createdAt: "2026-06-01T00:00:00.000Z",
     ...overrides,
@@ -165,12 +167,18 @@ describe("seasons CRUD", () => {
 });
 
 describe("settings", () => {
-  it("returns defaults when nothing is saved", async () => {
-    expect(await db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
+  it("seeds an active team + season context via migration", async () => {
+    // ensureData() has run (default roster seeding above), so migration has
+    // created a default team + season and pointed settings at them.
+    const settings = await db.getSettings();
+    expect(settings.activeTeamId).toBeTruthy();
+    expect(settings.activeSeasonId).toBeTruthy();
+    expect(settings.leagueRules).toEqual(DEFAULT_APP_SETTINGS.leagueRules);
   });
 
   it("round-trips saved settings", async () => {
     const settings: AppSettings = {
+      activeTeamId: "team-x",
       activeSeasonId: "season-x",
       teamName: "Tigers",
       leagueRules: { ...DEFAULT_LEAGUE_RULES, defaultInnings: 7 },
@@ -181,37 +189,70 @@ describe("settings", () => {
   });
 });
 
-describe("clearAllData", () => {
-  it("wipes all tables (players re-seed on next read)", async () => {
+describe("teams CRUD", () => {
+  it("saves, retrieves, and deletes a team", async () => {
+    const team = { id: "team-rt", name: "Owls", createdAt: "2026-01-01T00:00:00.000Z" };
+    await db.saveTeam(team);
+    expect(await db.getTeam("team-rt")).toEqual(team);
+    expect((await db.getAllTeams()).some((t) => t.id === "team-rt")).toBe(true);
+    await db.deleteTeam("team-rt");
+    expect(await db.getTeam("team-rt")).toBeUndefined();
+  });
+});
+
+describe("clearAllData + multi-team migration", () => {
+  it("wipes all tables and re-seeds a fresh team + season context", async () => {
     await db.saveGame(makeGame("game-wipe"));
-    await db.saveSeason(makeSeason("season-wipe"));
     await db.clearAllData();
     expect(await db.getGame("game-wipe")).toBeUndefined();
-    expect(await db.getAllSeasons()).toHaveLength(0);
-    expect(await db.getSettings()).toEqual(DEFAULT_APP_SETTINGS);
-    // Player table is empty, so the next read re-seeds the default roster.
-    expect(await db.getAllPlayers()).toHaveLength(9);
+
+    // The next read re-seeds the default roster and migrates into exactly one
+    // team and one season pointed to by settings.
+    const players = await db.getAllPlayers();
+    const teams = await db.getAllTeams();
+    const seasons = await db.getAllSeasons();
+    const settings = await db.getSettings();
+
+    expect(players).toHaveLength(9);
+    expect(teams).toHaveLength(1);
+    expect(seasons).toHaveLength(1);
+    expect(settings.activeTeamId).toBe(teams[0].id);
+    expect(settings.activeSeasonId).toBe(seasons[0].id);
+    expect(seasons[0].teamId).toBe(teams[0].id);
+
+    // The migrated season roster holds every seeded player exactly once.
+    expect(seasons[0].roster).toHaveLength(players.length);
+    expect(new Set(seasons[0].roster)).toEqual(new Set(players.map((p) => p.id)));
   });
 });
 
 describe("restoreBackup", () => {
-  it("replaces all existing data with the backup contents", async () => {
+  it("replaces all existing data with the backup contents (v2 backup with teams)", async () => {
     await db.saveGame(makeGame("game-pre"));
     const player = makePlayer({ firstName: "Backup" });
     const game = makeGame("game-bk");
-    const season = makeSeason("season-bk");
-    const settings: AppSettings = { ...DEFAULT_APP_SETTINGS, teamName: "Restored" };
+    const team = { id: "team-bk", name: "Restored", createdAt: "2026-01-01T00:00:00.000Z" };
+    const season = makeSeason("season-bk", { teamId: "team-bk", roster: [player.id] });
+    const settings: AppSettings = {
+      ...DEFAULT_APP_SETTINGS,
+      activeTeamId: "team-bk",
+      activeSeasonId: "season-bk",
+      teamName: "Restored",
+    };
 
-    await db.restoreBackup({ players: [player], games: [game], seasons: [season], settings });
+    // Backup already contains a team, so migration is a no-op and data
+    // round-trips exactly.
+    await db.restoreBackup({ players: [player], games: [game], teams: [team], seasons: [season], settings });
 
     expect(await db.getGame("game-pre")).toBeUndefined();
     expect(await db.getAllPlayers()).toEqual([player]);
     expect(await db.getGame("game-bk")).toEqual(game);
+    expect(await db.getAllTeams()).toEqual([team]);
     expect(await db.getSeason("season-bk")).toEqual(season);
     expect(await db.getSettings()).toEqual(settings);
   });
 
-  it("skips malformed records instead of failing the restore", async () => {
+  it("skips malformed records, then migrates a fresh context (v1 backup, no teams)", async () => {
     const good = makePlayer({ firstName: "Good" });
     await db.restoreBackup({
       players: [good, { bad: true } as unknown as Player, null as unknown as Player],
@@ -221,13 +262,49 @@ describe("restoreBackup", () => {
     });
     expect(await db.getAllPlayers()).toEqual([good]);
     expect(await db.getAllGames()).toHaveLength(0);
-    expect(await db.getAllSeasons()).toHaveLength(0);
+    // No team in the (v1) backup → migration creates one team + one season.
+    expect(await db.getAllTeams()).toHaveLength(1);
+    expect(await db.getAllSeasons()).toHaveLength(1);
   });
 
-  it("restoring an empty backup leaves empty tables (then players re-seed)", async () => {
+  it("restoring an empty backup re-seeds and migrates a fresh context", async () => {
     await db.restoreBackup({ players: [], games: [], seasons: [], settings: DEFAULT_APP_SETTINGS });
     expect(await db.getAllGames()).toHaveLength(0);
-    expect(await db.getAllSeasons()).toHaveLength(0);
     expect(await db.getAllPlayers()).toHaveLength(9); // re-seeded
+    expect(await db.getAllTeams()).toHaveLength(1);
+    expect(await db.getAllSeasons()).toHaveLength(1);
+  });
+});
+
+describe("migration of pre-existing seasons (upgrade path)", () => {
+  it("links rosterless seasons to a team and back-fills only empty rosters", async () => {
+    // clearAllData resets the migration flag. savePlayers/saveSeason write via
+    // ensureSchema only (no migration), so we can stage pre-migration data.
+    await db.clearAllData();
+    const p1 = makePlayer({ firstName: "One" });
+    const p2 = makePlayer({ firstName: "Two" });
+    await db.savePlayers([p1, p2]);
+    // teamId "" simulates v1 data with no team link. One season has no roster,
+    // the other already has one.
+    await db.saveSeason(makeSeason("s-empty", { teamId: "", roster: [] }));
+    await db.saveSeason(makeSeason("s-filled", { teamId: "", roster: [p1.id] }));
+
+    // First ensureData() read triggers the migration over the staged seasons.
+    const seasons = await db.getAllSeasons();
+    const teams = await db.getAllTeams();
+    const settings = await db.getSettings();
+
+    expect(teams).toHaveLength(1);
+    const sEmpty = seasons.find((s) => s.id === "s-empty")!;
+    const sFilled = seasons.find((s) => s.id === "s-filled")!;
+    // Both seasons now belong to the single migrated team.
+    expect(sEmpty.teamId).toBe(teams[0].id);
+    expect(sFilled.teamId).toBe(teams[0].id);
+    // The empty roster is back-filled with the full player list...
+    expect(new Set(sEmpty.roster)).toEqual(new Set([p1.id, p2.id]));
+    // ...while an existing roster is left untouched.
+    expect(sFilled.roster).toEqual([p1.id]);
+    expect(settings.activeTeamId).toBe(teams[0].id);
+    expect(settings.activeSeasonId).toBeTruthy();
   });
 });

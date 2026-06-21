@@ -7,8 +7,10 @@ import type {
   Game,
   GameStats,
   Season,
+  Team,
   AppSettings,
   Position,
+  FieldPosition,
   PlayerGameOverride,
   LeagueRules,
   RuleViolation,
@@ -22,6 +24,15 @@ import * as seasonLib from "./season";
 import { getComplianceSummary } from "./rules";
 import { buildAutoLineup, fillSingleInning, type AutoLineupResult } from "./autoLineup";
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** True if the player appears anywhere in the season's depth chart. */
+function hasDepthChartEntry(season: Season, playerId: string): boolean {
+  const chart = season.depthChart;
+  if (!chart) return false;
+  return Object.values(chart).some((ids) => ids?.includes(playerId));
+}
+
 // ─── State shape ──────────────────────────────────────────────────────────────
 
 type LoadingStatus = "idle" | "loading" | "ready" | "error";
@@ -33,6 +44,7 @@ type DiamondDraftState = {
   // Core data
   players: Player[];
   games: Game[];
+  teams: Team[];
   seasons: Season[];
   settings: AppSettings;
 
@@ -60,12 +72,32 @@ type DiamondDraftActions = {
   updatePlayer: (id: string, updates: Partial<Player>) => Promise<void>;
   removePlayer: (id: string) => Promise<void>;
 
+  // Teams
+  createTeam: (
+    params: Pick<Team, "name"> & Partial<Pick<Team, "headCoach" | "leagueDivision">>
+  ) => Promise<Team>;
+  updateTeam: (id: string, updates: Partial<Team>) => Promise<void>;
+  deleteTeam: (id: string) => Promise<void>;
+  setActiveTeam: (teamId: string) => Promise<void>;
+
   // Seasons
   createSeason: (
-    params: Pick<Season, "name" | "teamName" | "year">
+    params: Pick<Season, "name" | "teamId" | "teamName" | "year"> &
+      Partial<Pick<Season, "roster">>
   ) => Promise<Season>;
   setActiveSeason: (seasonId: string) => Promise<void>;
+  updateSeason: (
+    id: string,
+    updates: Partial<Pick<Season, "name" | "year">>
+  ) => Promise<void>;
   deleteSeason: (id: string) => Promise<void>;
+  addPlayerToSeasonRoster: (seasonId: string, playerId: string) => Promise<void>;
+  removePlayerFromSeasonRoster: (seasonId: string, playerId: string) => Promise<void>;
+  setDepthChartPosition: (
+    seasonId: string,
+    position: FieldPosition,
+    playerIds: string[]
+  ) => Promise<void>;
 
   // Games
   createGame: (
@@ -155,6 +187,7 @@ export const useDiamondDraftStore = create<
     status: "idle",
     players: [],
     games: [],
+    teams: [],
     seasons: [],
     settings: DEFAULT_APP_SETTINGS,
     activeGameId: null,
@@ -166,7 +199,7 @@ export const useDiamondDraftStore = create<
         s.status = "loading";
       });
       try {
-        const { players, games, seasons, settings } = await api.loadAll();
+        const { players, games, teams, seasons, settings } = await api.loadAll();
         const normalizedGames = games.map((game) => ({
           ...game,
           pitchCatchAssignments: game.pitchCatchAssignments ?? [],
@@ -174,6 +207,7 @@ export const useDiamondDraftStore = create<
         set((s) => {
           s.players = players;
           s.games = normalizedGames;
+          s.teams = teams;
           s.seasons = seasons;
           s.settings = settings;
           s.status = "ready";
@@ -232,10 +266,83 @@ export const useDiamondDraftStore = create<
     },
 
     removePlayer: async (id) => {
+      // Globally delete the player and strip them from every season roster and
+      // depth chart.
+      const affectedSeasons = get().seasons
+        .filter((s) => s.roster.includes(id) || hasDepthChartEntry(s, id))
+        .map((s) =>
+          seasonLib.pruneFromDepthChart(
+            seasonLib.removePlayerFromSeasonRoster(s, id),
+            id
+          )
+        );
       set((s) => {
         s.players = s.players.filter((p) => p.id !== id);
+        for (const updated of affectedSeasons) {
+          const idx = s.seasons.findIndex((s2) => s2.id === updated.id);
+          if (idx >= 0) s.seasons[idx] = updated;
+        }
       });
-      await api.deletePlayer(id);
+      await Promise.all([
+        api.deletePlayer(id),
+        ...affectedSeasons.map(api.saveSeason),
+      ]);
+    },
+
+    // ── Teams ──────────────────────────────────────────────────────────────
+    createTeam: async (params) => {
+      const team = seasonLib.createTeam(params);
+      set((s) => {
+        s.teams.push(team);
+      });
+      await api.createTeam(team);
+      return team;
+    },
+
+    updateTeam: async (id, updates) => {
+      const existing = get().teams.find((t) => t.id === id);
+      if (!existing) return;
+      const updated = seasonLib.updateTeam(existing, updates);
+      set((s) => {
+        const idx = s.teams.findIndex((t) => t.id === id);
+        if (idx >= 0) s.teams[idx] = updated;
+      });
+      await api.saveTeam(updated);
+    },
+
+    deleteTeam: async (id) => {
+      // Remove the team, its seasons, and those seasons' games (no orphans).
+      const removedSeasons = get().seasons.filter((s) => s.teamId === id);
+      const removedSeasonIds = removedSeasons.map((s) => s.id);
+      const removedGameIds = [...new Set(removedSeasons.flatMap((s) => s.gameIds))];
+      set((s) => {
+        s.teams = s.teams.filter((t) => t.id !== id);
+        s.seasons = s.seasons.filter((s2) => s2.teamId !== id);
+        s.games = s.games.filter((g) => !removedGameIds.includes(g.id));
+        if (s.activeGameId && removedGameIds.includes(s.activeGameId)) s.activeGameId = null;
+        if (s.settings.activeTeamId === id) s.settings.activeTeamId = null;
+        if (s.settings.activeSeasonId && removedSeasonIds.includes(s.settings.activeSeasonId)) {
+          s.settings.activeSeasonId = null;
+        }
+      });
+      const next = get().settings;
+      await Promise.all([
+        api.deleteTeam(id),
+        ...removedSeasonIds.map(api.deleteSeason),
+        ...removedGameIds.map(api.deleteGame),
+        api.saveSettings(next),
+      ]);
+    },
+
+    setActiveTeam: async (teamId) => {
+      // Switch teams and default the active season to one of that team's seasons.
+      const seasonsForTeam = get().seasons.filter((s) => s.teamId === teamId);
+      const nextSeasonId = seasonsForTeam[0]?.id ?? null;
+      const next = { ...get().settings, activeTeamId: teamId, activeSeasonId: nextSeasonId };
+      set((s) => {
+        s.settings = next;
+      });
+      await api.saveSettings(next);
     },
 
     // ── Seasons ────────────────────────────────────────────────────────────
@@ -249,48 +356,121 @@ export const useDiamondDraftStore = create<
     },
 
     setActiveSeason: async (seasonId) => {
-      const next = { ...get().settings, activeSeasonId: seasonId };
+      const season = get().seasons.find((s) => s.id === seasonId);
+      const next = {
+        ...get().settings,
+        activeSeasonId: seasonId,
+        // Keep the active team in sync with the chosen season.
+        activeTeamId: season?.teamId ?? get().settings.activeTeamId,
+      };
       set((s) => {
         s.settings = next;
       });
       await api.saveSettings(next);
     },
 
+    updateSeason: async (id, updates) => {
+      const existing = get().seasons.find((s) => s.id === id);
+      if (!existing) return;
+      const updated = seasonLib.updateSeason(existing, updates);
+      set((s) => {
+        const idx = s.seasons.findIndex((s2) => s2.id === id);
+        if (idx >= 0) s.seasons[idx] = updated;
+      });
+      await api.saveSeason(updated);
+    },
+
     deleteSeason: async (id) => {
+      // Remove the season and its games so nothing is left orphaned.
+      const season = get().seasons.find((s) => s.id === id);
+      const gameIds = season?.gameIds ?? [];
       set((s) => {
         s.seasons = s.seasons.filter((s2) => s2.id !== id);
+        s.games = s.games.filter((g) => !gameIds.includes(g.id));
+        if (s.activeGameId && gameIds.includes(s.activeGameId)) s.activeGameId = null;
         if (s.settings.activeSeasonId === id) {
           s.settings.activeSeasonId = null;
         }
       });
-      await api.deleteSeason(id);
+      await Promise.all([
+        api.deleteSeason(id),
+        ...gameIds.map(api.deleteGame),
+      ]);
+    },
+
+    addPlayerToSeasonRoster: async (seasonId, playerId) => {
+      const season = get().seasons.find((s) => s.id === seasonId);
+      if (!season) return;
+      const updated = seasonLib.addPlayerToSeasonRoster(season, playerId);
+      if (updated === season) return; // already on roster — no-op
+      set((s) => {
+        const idx = s.seasons.findIndex((s2) => s2.id === seasonId);
+        if (idx >= 0) s.seasons[idx] = updated;
+      });
+      await api.saveSeason(updated);
+    },
+
+    removePlayerFromSeasonRoster: async (seasonId, playerId) => {
+      const season = get().seasons.find((s) => s.id === seasonId);
+      if (!season) return;
+      // Drop from the roster and from any depth-chart spots in this season.
+      const updated = seasonLib.pruneFromDepthChart(
+        seasonLib.removePlayerFromSeasonRoster(season, playerId),
+        playerId
+      );
+      set((s) => {
+        const idx = s.seasons.findIndex((s2) => s2.id === seasonId);
+        if (idx >= 0) s.seasons[idx] = updated;
+      });
+      await api.saveSeason(updated);
+    },
+
+    setDepthChartPosition: async (seasonId, position, playerIds) => {
+      const season = get().seasons.find((s) => s.id === seasonId);
+      if (!season) return;
+      const updated = seasonLib.setDepthChartPosition(season, position, playerIds);
+      set((s) => {
+        const idx = s.seasons.findIndex((s2) => s2.id === seasonId);
+        if (idx >= 0) s.seasons[idx] = updated;
+      });
+      await api.saveSeason(updated);
     },
 
     // ── Games ──────────────────────────────────────────────────────────────
     createGame: async (params, totalInnings) => {
-      const { players, settings, seasons } = get();
+      const { players, settings, seasons, teams } = get();
       const innings = totalInnings ?? settings.leagueRules.defaultInnings;
+
+      const activeSeasonId = settings.activeSeasonId;
+      const season = activeSeasonId
+        ? seasons.find((s) => s.id === activeSeasonId)
+        : undefined;
+      // New games draw their roster from the active season's roster (so the
+      // lineup is constrained to it). Fall back to all players if no season is
+      // active. rosterSnapshot then preserves this game's roster for history.
+      const rosterPlayers = season
+        ? seasonLib.getRosterPlayers(season, players)
+        : players;
+      const activeTeam = teams.find((t) => t.id === settings.activeTeamId);
+      const defaultTeamName = activeTeam?.name || season?.teamName || settings.teamName;
+
       const game = lineupLib.createEmptyGame(
         {
           ...params,
-          teamName: params.teamName?.trim() || settings.teamName || undefined,
+          teamName: params.teamName?.trim() || defaultTeamName || undefined,
         },
-        players,
+        rosterPlayers,
         innings
       );
 
       // Attach to active season
-      const activeSeasonId = settings.activeSeasonId;
-      if (activeSeasonId) {
-        const season = seasons.find((s) => s.id === activeSeasonId);
-        if (season) {
-          const updated = seasonLib.addGameToSeason(season, game.id);
-          set((s) => {
-            const idx = s.seasons.findIndex((s2) => s2.id === activeSeasonId);
-            if (idx >= 0) s.seasons[idx] = updated;
-          });
-          await api.saveSeason(seasons.find((s) => s.id === activeSeasonId)!);
-        }
+      if (season) {
+        const updatedSeason = seasonLib.addGameToSeason(season, game.id);
+        set((s) => {
+          const idx = s.seasons.findIndex((s2) => s2.id === season.id);
+          if (idx >= 0) s.seasons[idx] = updatedSeason;
+        });
+        await api.saveSeason(updatedSeason);
       }
 
       set((s) => {
@@ -737,6 +917,7 @@ export const useDiamondDraftStore = create<
       set((s) => {
         s.players = [];
         s.games = [];
+        s.teams = [];
         s.seasons = [];
         s.settings = DEFAULT_APP_SETTINGS;
         s.activeGameId = null;
@@ -755,11 +936,35 @@ export const selectActiveGame = (
   return state.games.find((g) => g.id === state.activeGameId);
 };
 
+export const selectActiveTeam = (
+  state: DiamondDraftState
+): Team | undefined => {
+  if (!state.settings.activeTeamId) return undefined;
+  return state.teams.find((t) => t.id === state.settings.activeTeamId);
+};
+
+export const selectSeasonsByActiveTeam = (
+  state: DiamondDraftState
+): Season[] => {
+  const teamId = state.settings.activeTeamId;
+  if (!teamId) return state.seasons;
+  return state.seasons.filter((s) => s.teamId === teamId);
+};
+
 export const selectActiveSeason = (
   state: DiamondDraftState
 ): Season | undefined => {
   if (!state.settings.activeSeasonId) return undefined;
   return state.seasons.find((s) => s.id === state.settings.activeSeasonId);
+};
+
+/** Players on the active season's roster, in roster order. Empty if no season. */
+export const selectRosterPlayers = (
+  state: DiamondDraftState
+): Player[] => {
+  const season = selectActiveSeason(state);
+  if (!season) return state.players;
+  return seasonLib.getRosterPlayers(season, state.players);
 };
 
 export const selectPlayerById =
