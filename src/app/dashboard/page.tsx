@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useDiamondDraftStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
+import {
+  useDiamondDraftStore,
+  selectActiveSeason,
+  selectGamesByActiveSeason,
+  selectRosterPlayers,
+} from "@/lib/store";
 import { FIELD_POSITIONS } from "@/lib/types";
 import type { FieldPosition, Game, Player, HittingStats, PitchingGameStats } from "@/lib/types";
 import { C, PageHeader } from "@/components/AppShell";
@@ -555,11 +561,22 @@ function EmptyState({ msg }: { msg: string }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type Tab = "playing-time" | "batting" | "pitching";
+type Scope = "season" | "career";
 
 export default function DashboardPage() {
-  const players = useDiamondDraftStore((s) => s.players);
-  const games = useDiamondDraftStore((s) => s.games);
+  const allPlayers = useDiamondDraftStore((s) => s.players);
+  const allGames = useDiamondDraftStore((s) => s.games);
+  const seasonPlayers = useDiamondDraftStore(useShallow(selectRosterPlayers));
+  const seasonGames = useDiamondDraftStore(useShallow(selectGamesByActiveSeason));
+  const activeSeason = useDiamondDraftStore(selectActiveSeason);
   const [tab, setTab] = useState<Tab>("playing-time");
+  const [scope, setScope] = useState<Scope>("season");
+
+  // Season scope = active season's roster + games; Career = everything, across
+  // all teams and seasons. Career aggregates directly because game snapshots
+  // and gameStats are keyed by the global playerId.
+  const players = scope === "season" && activeSeason ? seasonPlayers : allPlayers;
+  const games = scope === "season" && activeSeason ? seasonGames : allGames;
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -587,7 +604,23 @@ export default function DashboardPage() {
 
   return (
     <div className="dd-wrap">
-      <PageHeader eyebrow="Season overview" title="Player Stats" subtitle={subtitle} />
+      <PageHeader
+        eyebrow={scope === "career" ? "Career totals" : activeSeason ? `${activeSeason.teamName} · ${activeSeason.name}` : "Season overview"}
+        title="Player Stats"
+        subtitle={subtitle}
+      />
+
+      {/* Scope selector: this season vs entire career */}
+      <div className="dd-seg" style={{ marginBottom: 12 }}>
+        {([
+          ["season", "This Season"],
+          ["career", "Career"],
+        ] as const).map(([key, label]) => (
+          <button key={key} className={scope === key ? "on" : ""} onClick={() => setScope(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Tab selector */}
       <div className="dd-seg" style={{ marginBottom: 20 }}>

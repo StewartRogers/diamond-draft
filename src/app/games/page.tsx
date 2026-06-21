@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { useDiamondDraftStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
+import {
+  useDiamondDraftStore,
+  selectActiveSeason,
+  selectGamesByActiveSeason,
+  selectRosterPlayers,
+} from "@/lib/store";
 import { C, GameRow, NewGameModal, PageHeader } from "@/components/AppShell";
 
 export default function GamesPage() {
-  const games = useDiamondDraftStore((s) => s.games);
-  const players = useDiamondDraftStore((s) => s.players);
+  const games = useDiamondDraftStore(useShallow(selectGamesByActiveSeason));
+  const players = useDiamondDraftStore(useShallow(selectRosterPlayers));
+  const activeSeason = useDiamondDraftStore(selectActiveSeason);
   const [showModal, setShowModal] = useState(false);
   const [filt, setFilt] = useState<"all" | "draft" | "finalized">("all");
 
@@ -17,7 +24,7 @@ export default function GamesPage() {
   return (
     <div className="dd-wrap">
       <PageHeader
-        eyebrow="Season schedule"
+        eyebrow={activeSeason ? `${activeSeason.teamName} · ${activeSeason.name}` : "Season schedule"}
         title="Games"
         subtitle={`${games.length} games · ${draft} need a lineup before game day.`}
         action={

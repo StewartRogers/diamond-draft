@@ -217,7 +217,8 @@ body {
 .dd-nav-link:hover { color: #211f1b; background: #f1efe8; }
 .dd-nav-link.active { color: #3f6212; background: #eef1e3; }
 
-.dd-nav-user { margin-left: auto; position: relative; }
+.dd-nav-switcher { margin-left: auto; }
+.dd-nav-user { margin-left: 16px; position: relative; }
 
 .dd-nav-avatar {
   width: 34px; height: 34px;
@@ -313,6 +314,7 @@ body {
   .dd-nav { padding: 0 16px; height: 56px; gap: 12px; }
   .dd-nav-brand-text { display: none; }
   .dd-nav-links { display: none; }
+  .dd-nav-switcher { display: none; }
   .dd-nav-user { display: none; }
   .dd-nav-hamburger {
     display: flex; align-items: center; justify-content: center;

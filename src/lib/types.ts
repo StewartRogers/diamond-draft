@@ -150,13 +150,42 @@ export type Game = {
   updatedAt: string;
 };
 
+// ─── Team ─────────────────────────────────────────────────────────────────────
+
+/**
+ * A team is a long-lived identity that can run multiple seasons over time.
+ * Team metadata (name / coach / division) lives here; players are global and
+ * become part of a team only by being added to one of its season rosters.
+ */
+export type Team = {
+  id: string;
+  name: string;
+  headCoach?: string;
+  leagueDivision?: string;
+  createdAt: string;
+};
+
 // ─── Season ───────────────────────────────────────────────────────────────────
 
 export type Season = {
   id: string;
   name: string;
+  /** FK to the owning Team. */
+  teamId: string;
+  /** Denormalized team name kept for display / backward compatibility. */
   teamName: string;
   year: number;
+  /**
+   * Global player IDs on this team-season's roster. A player appears at most
+   * once here (uniqueness enforced in code — see season.ts roster helpers).
+   */
+  roster: string[];
+  /**
+   * Manual depth chart: per field position, an ordered list of roster player
+   * IDs (index 0 = starter, then backups). Pitcher is intentionally excluded.
+   * Absent/empty positions are simply unlisted.
+   */
+  depthChart?: Partial<Record<FieldPosition, string[]>>;
   gameIds: string[];
   createdAt: string;
 };
@@ -200,7 +229,13 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
 // ─── App Settings ─────────────────────────────────────────────────────────────
 
 export type AppSettings = {
+  /** Active team the coach is working in (multi-team support). */
+  activeTeamId: string | null;
   activeSeasonId: string | null;
+  /**
+   * Legacy team identity. Team metadata now lives on the Team entity; these
+   * fields are retained only to seed the first Team during migration.
+   */
   teamName: string;
   headCoach?: string;
   leagueDivision?: string;
@@ -209,6 +244,7 @@ export type AppSettings = {
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
+  activeTeamId: null,
   activeSeasonId: null,
   teamName: "",
   headCoach: "",

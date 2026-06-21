@@ -1,10 +1,16 @@
 "use client";
 
 import React, { useState } from "react";
-import { useDiamondDraftStore } from "@/lib/store";
+import { useShallow } from "zustand/react/shallow";
+import {
+  useDiamondDraftStore,
+  selectActiveSeason,
+  selectRosterPlayers,
+} from "@/lib/store";
 import type { Player } from "@/lib/types";
 import { DEFENSE_TIER_CFG } from "@/lib/types";
 import PlayerForm from "@/components/roster/PlayerForm";
+import DepthChartView from "@/components/roster/DepthChartView";
 import { C, Jersey, ZChips, Pill, PageHeader } from "@/components/AppShell";
 
 const STATUS_PILL = {
@@ -15,15 +21,27 @@ const STATUS_PILL = {
 };
 
 export default function RosterPage() {
-  const players = useDiamondDraftStore((s) => s.players);
+  const allPlayers = useDiamondDraftStore((s) => s.players);
+  const players = useDiamondDraftStore(useShallow(selectRosterPlayers));
+  const activeSeason = useDiamondDraftStore(selectActiveSeason);
   const addPlayer = useDiamondDraftStore((s) => s.addPlayer);
   const updatePlayer = useDiamondDraftStore((s) => s.updatePlayer);
   const removePlayer = useDiamondDraftStore((s) => s.removePlayer);
+  const addToRoster = useDiamondDraftStore((s) => s.addPlayerToSeasonRoster);
+  const removeFromRoster = useDiamondDraftStore((s) => s.removePlayerFromSeasonRoster);
 
   const [q, setQ] = useState("");
+  const [view, setView] = useState<"list" | "depth">("list");
   const [showAdd, setShowAdd] = useState(false);
+  const [showExisting, setShowExisting] = useState(false);
   const [editing, setEditing] = useState<Player | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  // Global players not already on this season's roster (for "add existing").
+  const rosterIds = new Set(players.map((p) => p.id));
+  const availablePlayers = allPlayers
+    .filter((p) => !rosterIds.has(p.id))
+    .sort((a, b) => Number(a.jerseyNumber) - Number(b.jerseyNumber));
 
   const sorted = [...players].sort((a, b) => Number(a.jerseyNumber) - Number(b.jerseyNumber));
   const filtered = sorted.filter((p) => {
@@ -38,22 +56,81 @@ export default function RosterPage() {
 
   const isPitcher = (p: Player) => p.eligiblePositions.some((pos) => pos === "P");
 
+  if (!activeSeason) {
+    return (
+      <div className="dd-wrap">
+        <PageHeader eyebrow="Season roster" title="Roster" subtitle="Select or create a season to manage its roster." />
+        <div className="dd-card" style={{ padding: "40px 32px", textAlign: "center", color: C.faint }}>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No active season</div>
+          <div style={{ fontSize: 13 }}>Use the team / season picker in the top bar to choose or create a season.</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="dd-wrap">
       <PageHeader
-        eyebrow="Season roster"
+        eyebrow={`${activeSeason.teamName} · ${activeSeason.name}`}
         title="Roster"
-        subtitle={`${players.length} player${players.length !== 1 ? "s" : ""} · tap a player to edit eligibility & status.`}
+        subtitle={`${players.length} player${players.length !== 1 ? "s" : ""} on this season's roster · tap a player to edit eligibility & status.`}
         action={
-          <button className="dd-btn pri" onClick={() => { setShowAdd(true); setEditing(null); }}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round">
-              <path d="M8 3v10M3 8h10"/>
-            </svg>
-            Add player
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="dd-btn sec"
+              onClick={() => { setView("list"); setShowExisting((v) => !v); setShowAdd(false); setEditing(null); }}
+              disabled={availablePlayers.length === 0}
+              title={availablePlayers.length === 0 ? "All players are already on this roster" : undefined}
+            >
+              Add existing
+            </button>
+            <button className="dd-btn pri" onClick={() => { setView("list"); setShowAdd(true); setShowExisting(false); setEditing(null); }}>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round">
+                <path d="M8 3v10M3 8h10"/>
+              </svg>
+              Add player
+            </button>
+          </div>
         }
       />
 
+      {/* Add existing global player to this season */}
+      {showExisting && (
+        <div className="dd-card" style={{ padding: "18px 20px", marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>
+            Add a player from another team / season
+          </div>
+          {availablePlayers.length === 0 ? (
+            <div style={{ fontSize: 13, color: C.faint }}>Every player is already on this roster.</div>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {availablePlayers.map((p) => (
+                <button
+                  key={p.id}
+                  className="dd-btn ghost sm"
+                  onClick={async () => { await addToRoster(activeSeason.id, p.id); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, color: C.muted }}>#{p.jerseyNumber}</span>
+                  {p.firstName} {p.lastInitial}
+                  <span style={{ color: C.green, fontWeight: 700 }}>+</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* View toggle: roster list vs depth chart */}
+      <div className="dd-seg" style={{ marginBottom: 16 }}>
+        <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>List</button>
+        <button className={view === "depth" ? "on" : ""} onClick={() => setView("depth")}>Depth chart</button>
+      </div>
+
+      {view === "depth" ? (
+        <DepthChartView seasonId={activeSeason.id} players={players} />
+      ) : (
+      <>
       {/* Search */}
       <div style={{ position: "relative", width: 320, marginBottom: 16 }}>
         <svg
@@ -77,7 +154,11 @@ export default function RosterPage() {
         <div className="dd-card" style={{ padding: "22px 24px", marginBottom: 20 }}>
           <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>New Player</div>
           <PlayerForm
-            onSave={async (data) => { await addPlayer(data); setShowAdd(false); }}
+            onSave={async (data) => {
+              const player = await addPlayer(data);
+              await addToRoster(activeSeason.id, player.id);
+              setShowAdd(false);
+            }}
             onCancel={() => setShowAdd(false)}
           />
         </div>
@@ -163,8 +244,8 @@ export default function RosterPage() {
                           <button
                             className="dd-btn ghost sm"
                             style={{ padding: "0 8px", color: C.red }}
-                            onClick={() => setConfirmDelete(player.id)}
-                            title="Remove player"
+                            onClick={() => setConfirmRemove(player.id)}
+                            title="Remove from this season"
                           >
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                               <path d="M3 4h10M6 4V2h4v2M5 4l.5 10h5L11 4"/>
@@ -187,24 +268,32 @@ export default function RosterPage() {
                       </tr>
                     )}
 
-                    {/* Confirm delete */}
-                    {confirmDelete === player.id && (
+                    {/* Confirm remove */}
+                    {confirmRemove === player.id && (
                       <tr>
                         <td colSpan={6} style={{ background: "#fdf2f1", padding: "12px 24px" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 13 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 13, flexWrap: "wrap" }}>
                             <span style={{ color: C.red }}>
-                              Remove {player.firstName} {player.lastInitial}? This cannot be undone.
+                              Remove {player.firstName} {player.lastInitial} from {activeSeason.name}?
                             </span>
                             <button
                               className="dd-btn pri sm"
                               style={{ background: C.red }}
-                              onClick={async () => { await removePlayer(player.id); setConfirmDelete(null); }}
+                              onClick={async () => { await removeFromRoster(activeSeason.id, player.id); setConfirmRemove(null); }}
                             >
-                              Remove
+                              Remove from season
                             </button>
                             <button
                               className="dd-btn ghost sm"
-                              onClick={() => setConfirmDelete(null)}
+                              style={{ color: C.red }}
+                              onClick={async () => { await removePlayer(player.id); setConfirmRemove(null); }}
+                              title="Delete this player from every team and season"
+                            >
+                              Delete player entirely
+                            </button>
+                            <button
+                              className="dd-btn ghost sm"
+                              onClick={() => setConfirmRemove(null)}
                             >
                               Cancel
                             </button>
@@ -219,6 +308,8 @@ export default function RosterPage() {
           </table>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

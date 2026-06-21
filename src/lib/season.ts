@@ -3,23 +3,111 @@ import type {
   Game,
   Player,
   Season,
+  Team,
   PlayerSeasonStats,
   Position,
+  FieldPosition,
   PitchingLogEntry,
 } from "./types";
 import { FIELD_POSITIONS } from "./types";
 
-// ─── Season CRUD ──────────────────────────────────────────────────────────────
+// ─── Team CRUD ────────────────────────────────────────────────────────────────
 
-export function createSeason(
-  params: Pick<Season, "name" | "teamName" | "year">
-): Season {
+export function createTeam(
+  params: Pick<Team, "name"> & Partial<Pick<Team, "headCoach" | "leagueDivision">>
+): Team {
   return {
     id: uuidv4(),
     ...params,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export function updateTeam(team: Team, updates: Partial<Team>): Team {
+  return { ...team, ...updates };
+}
+
+// ─── Season CRUD ──────────────────────────────────────────────────────────────
+
+export function createSeason(
+  params: Pick<Season, "name" | "teamId" | "teamName" | "year"> &
+    Partial<Pick<Season, "roster">>
+): Season {
+  return {
+    id: uuidv4(),
+    name: params.name,
+    teamId: params.teamId,
+    teamName: params.teamName,
+    year: params.year,
+    roster: params.roster ? [...new Set(params.roster)] : [],
     gameIds: [],
     createdAt: new Date().toISOString(),
   };
+}
+
+// ─── Season roster ────────────────────────────────────────────────────────────
+
+/**
+ * Add a player to a team-season roster. A player may appear only once per
+ * team-season; adding an already-present player is a no-op.
+ */
+export function addPlayerToSeasonRoster(season: Season, playerId: string): Season {
+  if (season.roster.includes(playerId)) return season;
+  return { ...season, roster: [...season.roster, playerId] };
+}
+
+export function removePlayerFromSeasonRoster(
+  season: Season,
+  playerId: string
+): Season {
+  return { ...season, roster: season.roster.filter((id) => id !== playerId) };
+}
+
+/** Resolve a season's roster IDs to Player objects (skips unknown IDs). */
+export function getRosterPlayers(season: Season, players: Player[]): Player[] {
+  const byId = new Map(players.map((p) => [p.id, p]));
+  return season.roster
+    .map((id) => byId.get(id))
+    .filter((p): p is Player => p !== undefined);
+}
+
+// ─── Depth chart ──────────────────────────────────────────────────────────────
+
+/**
+ * Replace the ordered player list for one field position in the season's depth
+ * chart. IDs are deduped (a player appears once per position). Used for add,
+ * remove, and reorder — the caller computes the desired final order.
+ */
+export function setDepthChartPosition(
+  season: Season,
+  position: FieldPosition,
+  playerIds: string[]
+): Season {
+  const deduped = [...new Set(playerIds)];
+  return {
+    ...season,
+    depthChart: { ...(season.depthChart ?? {}), [position]: deduped },
+  };
+}
+
+/** Remove a player from every position in the season's depth chart. */
+export function pruneFromDepthChart(season: Season, playerId: string): Season {
+  if (!season.depthChart) return season;
+  const next: Partial<Record<FieldPosition, string[]>> = {};
+  let changed = false;
+  for (const [pos, ids] of Object.entries(season.depthChart) as [
+    FieldPosition,
+    string[]
+  ][]) {
+    const filtered = ids.filter((id) => id !== playerId);
+    if (filtered.length !== ids.length) changed = true;
+    next[pos] = filtered;
+  }
+  return changed ? { ...season, depthChart: next } : season;
+}
+
+export function updateSeason(season: Season, updates: Partial<Season>): Season {
+  return { ...season, ...updates };
 }
 
 export function addGameToSeason(season: Season, gameId: string): Season {

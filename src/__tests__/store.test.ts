@@ -70,8 +70,10 @@ function makeSeason(id: string, gameIds: string[] = []): Season {
   return {
     id,
     name: "Test Season",
+    teamId: "team-1",
     teamName: "Eagles",
     year: 2026,
+    roster: [],
     gameIds,
     createdAt: new Date().toISOString(),
   };
