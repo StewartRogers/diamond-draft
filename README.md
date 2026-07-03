@@ -4,10 +4,18 @@ A web app for youth baseball coaches to build rule-compliant game lineups. Runs 
 
 ## Features
 
+### Multi-team support
+- Manage multiple teams, each with its own seasons — switch between teams from the nav
+- Players are a shared, global pool: the same player can appear on multiple teams' or seasons' rosters at once
+- Each season has its own roster (a subset of the global player list) and its own depth chart
+- A master player list page shows every player and which team-seasons they're on, with one-click add to the active season's roster
+- Deleting a team cascades to its seasons and games; deleting a player prunes it from every roster and depth chart
+
 ### Roster management
 - Add players with jersey number, eligible positions, per-position skill tier (Primary / Secondary / Can play), and an overall defensive rating (1–4)
 - Set per-game and season pitching inning limits per player
 - Mark players as guests (+1)
+- **Depth chart** — a visual field diagram (excluding pitcher) for setting each position's ordered depth per season, with drag-to-reorder
 
 ### Game lineup builder
 - Two views: **Grid** (all players × all innings) and **Field** (visual diamond, one inning at a time)
@@ -39,8 +47,9 @@ All rules are configurable in Settings and enforced by both auto-fill and the va
 
 ### Data & backup
 - SQLite storage — local file (`data/diamond-draft.sqlite3`) or remote via Turso
-- Full JSON backup export and import from the Settings page
-- Seasons group games; statistics like season pitching totals carry across games
+- Full JSON backup export and import from the Settings page (backups include teams, players, seasons, and games)
+- Teams group seasons; seasons group games and hold a per-season roster and depth chart. Statistics like season pitching totals carry across games within a season
+- Existing single-team databases and backups migrate automatically into the multi-team model on first load
 
 ---
 
@@ -117,23 +126,27 @@ Browser (React 19 + Zustand)
 
 | Path | What lives here |
 |---|---|
-| `src/lib/types.ts` | All domain types: Player, Game, InningAssignment, LeagueRules, etc. |
+| `src/lib/types.ts` | All domain types: Player, Team, Season, Game, InningAssignment, LeagueRules, etc. |
 | `src/lib/lineup.ts` | Pure functions for mutating innings (assign, swap, copy, bullpen warm-up) |
 | `src/lib/rules.ts` | Violation checker — `validateInning`, `validateGame`, `getComplianceSummary` |
 | `src/lib/autoLineup.ts` | Two-phase greedy solver (hard constraints → soft scoring) |
+| `src/lib/season.ts` | Season/player factory helpers plus roster and depth-chart helpers |
 | `src/lib/store.ts` | Zustand store — single source of truth on the client |
-| `src/lib/server/db.ts` | SQLite access via @libsql/client (server-only; seeds default roster on first run) |
+| `src/lib/server/db.ts` | SQLite access via @libsql/client (server-only; seeds default roster on first run; migrates legacy single-team data) |
 | `src/lib/server/auth.ts` | Built-in authentication — password hashing, sessions, user CRUD, route guards |
 | `src/lib/server/connection.ts` | Shared @libsql/client factory — local SQLite or remote Turso |
 | `src/lib/server/env.ts` | Vercel environment detection and env var validation |
 | `src/components/game/LineupBuilder.tsx` | Main interactive lineup editor |
 | `src/components/game/lineup/` | Grid view, field view, popovers, shared types and adapters |
-| `src/app/api/` | REST endpoints for players, games, seasons, settings, auth, users, and AI pitch plan |
+| `src/components/roster/DepthChartView.tsx` | Season depth chart — field diagram with drag-to-reorder per position |
+| `src/components/TeamSeasonSwitcher.tsx` | Nav control for switching the active team/season |
+| `src/app/players/page.tsx` | Master player list — all players and which team-seasons they're on |
+| `src/app/api/` | REST endpoints for players, games, seasons, teams, settings, auth, users, and AI pitch plan |
 | `src/__tests__/` | Vitest unit suite; `COVERAGE.md` maps coverage status |
 
 ### Data model
 
-SQLite (via `@libsql/client`) stores each entity (`players`, `games`, `seasons`, `settings`) as a single JSON blob in a two-column table (`id`, `data`). Auth tables (`users`, `sessions`) live in the same database. There is no ORM and no migrations — schema changes are handled by re-seeding or manual migration of the JSON.
+SQLite (via `@libsql/client`) stores each entity (`players`, `games`, `seasons`, `teams`, `settings`) as a single JSON blob in a two-column table (`id`, `data`). Auth tables (`users`, `sessions`) live in the same database. There is no ORM and no migrations — schema changes are handled by re-seeding or manual migration of the JSON. Players are global; a `Season` holds `teamId`, `roster` (player IDs), and `depthChart` (ordered player IDs per field position).
 
 The lineup builder maintains a local `Schedule` (`Record<playerId, CellValue[]>`) in React state, converted to/from the `InningAssignment[]` model via `gameToSchedule` / `scheduleToInnings` in `src/components/game/lineup/shared.ts`. Changes persist immediately via `updateGameInnings`.
 

@@ -41,10 +41,12 @@ The Zustand store (`store.ts`) is the single source of truth on the client. It h
 
 ### Data model
 
-- **Player** — roster member with `eligiblePositions`, per-position `positionRatings` (1–3), `defenseRating` (1–4), per-game/season pitching limits, and a `pitchingLog`.
-- **Game** — has `innings: InningAssignment[]` (each with `slots: InningSlot[]` for all 9 field positions + Bench + 2 Bullpen slots), a `battingOrder`, `playerOverrides` (absent/late/earlyLeave), and `pitchCatchAssignments` (the pitcher/catcher plan used to lock autofill).
-- **Season** — groups games; tracks `activeSeasonId` in settings.
-- SQLite stores each entity as a single JSON blob (`data` column). The schema is flat: `players`, `games`, `seasons`, `settings` tables, each with `id TEXT PRIMARY KEY, data TEXT`. Auth adds `users` and `sessions` tables in the same database file (see Authentication section).
+- **Player** — a global roster member (not owned by a team) with `eligiblePositions`, per-position `positionRatings` (1–3), `defenseRating` (1–4), per-game/season pitching limits, and a `pitchingLog`. A player joins a team only by appearing in one of its seasons' `roster` arrays, and can belong to multiple teams/seasons at once.
+- **Team** — `{ id, name, headCoach?, leagueDivision?, createdAt }`. A long-lived identity that can run multiple seasons over time. `settings.activeTeamId` tracks the selected team.
+- **Season** — groups games under a `teamId`; also holds `roster: string[]` (player IDs on this season's roster) and `depthChart?: Partial<Record<FieldPosition, string[]>>` (manual, ordered player IDs per field position, excluding pitcher). Tracks `activeSeasonId` in settings. Deleting a team cascades to its seasons and those seasons' games.
+- **Game** — has `innings: InningAssignment[]` (each with `slots: InningSlot[]` for all 9 field positions + Bench + 2 Bullpen slots), a `battingOrder`, `playerOverrides` (absent/late/earlyLeave), and `pitchCatchAssignments` (the pitcher/catcher plan used to lock autofill). New games snapshot the active season's roster into `rosterSnapshot` at creation time.
+- SQLite stores each entity as a single JSON blob (`data` column). The schema is flat: `players`, `games`, `seasons`, `teams`, `settings` tables, each with `id TEXT PRIMARY KEY, data TEXT`. Auth adds `users` and `sessions` tables in the same database file (see Authentication section).
+- A one-time idempotent migration (`migrateToMultiTeam()` in `server/db.ts`) wraps any pre-multi-team data into a single `Team` + `Season` on first read, so older single-team databases and backups keep working.
 
 ### Business logic (`src/lib/`)
 
@@ -54,9 +56,9 @@ The Zustand store (`store.ts`) is the single source of truth on the client. It h
 | `lineup.ts` | Pure functions for mutating innings — `assignPlayerToSlot`, `swapPlayersInInning`, `copyInning`, `applyWarmupBullpen`, etc. |
 | `rules.ts` | Violation checker — `validateInning` / `validateGame` / `getComplianceSummary`. Contains all league rule logic. |
 | `autoLineup.ts` | Two-phase greedy solver. Phase 1: hard constraints (eligibility, limits, availability, locked slots). Phase 2: soft scoring (fair play, bench distribution, position variety). Works inning-by-inning, carrying forward cumulative `PlayerState`. |
-| `db.ts` | Client-side `FullBackup` type and `requestJson` fetch helper used for backup export/import |
-| `season.ts` | Season and player factory helpers |
-| `server/db.ts` | SQLite access via @libsql/client (server-only). Seeds a default 9-player roster on first run. `DIAMOND_DRAFT_DATA_DIR` env var overrides the data directory. |
+| `db.ts` | Client-side `FullBackup` type (v2, includes `teams`, backward compatible with v1) and `requestJson` fetch helper used for backup export/import |
+| `season.ts` | Season/player factory helpers plus roster and depth-chart helpers — `addPlayerToSeasonRoster`, `removePlayerFromSeasonRoster`, `getRosterPlayers`, `setDepthChartPosition`, `pruneFromDepthChart` |
+| `server/db.ts` | SQLite access via @libsql/client (server-only). Seeds a default 9-player roster on first run. Runs `migrateToMultiTeam()` to backfill `teams`/`roster` on legacy data. `DIAMOND_DRAFT_DATA_DIR` env var overrides the data directory. |
 | `server/auth.ts` | Password hashing, session CRUD, user CRUD, rate limiting, route guards (server-only). |
 | `server/connection.ts` | Shared @libsql/client factory — creates local (`file:`) or remote (Turso `libsql://`) clients. Handles WAL mode for local SQLite. |
 | `server/env.ts` | Vercel environment detection (`getVercelEnv`) and env var validation (`validateEnv`). |
@@ -94,7 +96,7 @@ All API routes (except `/api/auth/*`) require a valid session. Auth is built-in 
 
 ### API routes (`src/app/api/`)
 
-All routes use `export const runtime = "nodejs"` (required for `@libsql/client`). They are thin: validate input, delegate to `server/db.ts`, return JSON. All data routes are gated by `requireUser`. Additional routes: `/api/bootstrap` returns all data for initial client load; `/api/state` does the same (used for backup export); `/api/env` returns Vercel environment info (superuser only). The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
+All routes use `export const runtime = "nodejs"` (required for `@libsql/client`). They are thin: validate input, delegate to `server/db.ts`, return JSON. All data routes are gated by `requireUser`. `/api/teams` (GET all, POST create) and `/api/teams/[id]` (GET/PUT/DELETE, cascades to seasons/games) manage team CRUD. Additional routes: `/api/bootstrap` returns all data (including `teams`) for initial client load; `/api/state` does the same (used for backup export); `/api/env` returns Vercel environment info (superuser only). The one AI route (`/api/ai/pitch-plan`) calls Google Gemini and returns `GamePitchCatchAssignment[]`.
 
 **Shared connection factory:** `server/connection.ts` provides `getSharedClient(cacheKey)` which creates `@libsql/client` instances — local `file:` URLs when `TURSO_DATABASE_URL` is absent, or remote Turso connections when it is set. Clients are cached on `globalThis` to survive Next.js hot reload. `server/db.ts` and `server/auth.ts` each use a separate cache key (`__dd_data_db` and `__dd_auth_db`) but point at the same database.
 
