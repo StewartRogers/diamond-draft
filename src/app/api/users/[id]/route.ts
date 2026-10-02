@@ -1,5 +1,6 @@
 import { requireSuperuser, deleteUser, resetPassword, setUserRole, getUser, validatePassword } from "@/lib/server/auth";
 import type { UserRole } from "@/lib/server/auth";
+import { readJson } from "@/lib/server/http";
 
 export const runtime = "nodejs";
 
@@ -18,7 +19,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (result instanceof Response) return result;
 
   const { id } = await params;
-  const body = (await request.json()) as { role?: UserRole; password?: string };
+  const body = await readJson<{ role?: UserRole; password?: string } | null>(request);
+  if (body instanceof Response) return body;
+  if (!body || typeof body !== "object") {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
+  }
 
   if (body.password) {
     const pwError = validatePassword(body.password);
@@ -52,6 +57,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return Response.json({ error: "Cannot delete your own account" }, { status: 400 });
   }
 
-  await deleteUser(id);
+  const deleted = await deleteUser(id);
+  if (deleted === "last_superuser") {
+    return Response.json({ error: "Cannot delete the last admin" }, { status: 400 });
+  }
+  if (deleted === "not_found") {
+    return Response.json({ error: "User not found" }, { status: 404 });
+  }
   return new Response(null, { status: 204 });
 }

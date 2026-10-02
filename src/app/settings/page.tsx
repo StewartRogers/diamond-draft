@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   useDiamondDraftStore,
@@ -65,6 +65,16 @@ export default function SettingsPage() {
   const [defaultInnings, setDefaultInnings] = useState(String(rules.defaultInnings));
   const [saved, setSaved] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  // Restoring a backup and clearing all data are admin-only on the server.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setIsAdmin(data?.user?.role === "superuser"))
+      .catch(() => setIsAdmin(false));
+  }, []);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState("");
@@ -155,8 +165,14 @@ export default function SettingsPage() {
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    await importBackup(JSON.parse(text));
+    e.target.value = "";
+    setImportError(null);
+    try {
+      const text = await file.text();
+      await importBackup(JSON.parse(text));
+    } catch {
+      setImportError("Could not import that file. Make sure it is a Diamond Draft backup (.json).");
+    }
   }
 
   return (
@@ -422,30 +438,37 @@ export default function SettingsPage() {
         </p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button className="dd-btn sec" onClick={handleExport}>Export backup</button>
-          <label className="dd-btn sec" style={{ cursor: "pointer" }}>
-            Import backup
-            <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
-          </label>
+          {isAdmin && (
+            <label className="dd-btn sec" style={{ cursor: "pointer" }}>
+              Import backup
+              <input type="file" accept=".json" style={{ display: "none" }} onChange={handleImport} />
+            </label>
+          )}
           <Link href="/import" className="dd-btn sec">Import CSV data →</Link>
         </div>
-        <div style={{ borderTop: `1px solid ${C.line2}`, marginTop: 20, paddingTop: 16 }}>
-          {!confirmClear ? (
-            <button
-              style={{ color: C.red, fontWeight: 600, fontSize: 13.5, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
-              onClick={() => setConfirmClear(true)}
-            >
-              Clear all data…
-            </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
-              <span style={{ color: C.red }}>Delete all players, games, and settings?</span>
-              <button className="dd-btn pri sm" style={{ background: C.red }} onClick={async () => { await clearAllData(); setConfirmClear(false); }}>
-                Clear everything
+        {importError && (
+          <div role="alert" style={{ color: C.red, fontSize: 13, marginTop: 10 }}>{importError}</div>
+        )}
+        {isAdmin && (
+          <div style={{ borderTop: `1px solid ${C.line2}`, marginTop: 20, paddingTop: 16 }}>
+            {!confirmClear ? (
+              <button
+                style={{ color: C.red, fontWeight: 600, fontSize: 13.5, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}
+                onClick={() => setConfirmClear(true)}
+              >
+                Clear all data…
               </button>
-              <button className="dd-btn ghost sm" onClick={() => setConfirmClear(false)}>Cancel</button>
-            </div>
-          )}
-        </div>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13 }}>
+                <span style={{ color: C.red }}>Delete all players, games, and settings?</span>
+                <button className="dd-btn pri sm" style={{ background: C.red }} onClick={async () => { await clearAllData(); setConfirmClear(false); }}>
+                  Clear everything
+                </button>
+                <button className="dd-btn ghost sm" onClick={() => setConfirmClear(false)}>Cancel</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

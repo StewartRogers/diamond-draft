@@ -278,16 +278,145 @@ describe("createUserIfNoUsers (atomic setup)", () => {
   });
 });
 
-describe("rate limiting", () => {
-  it("allows requests within the limit", () => {
-    expect(auth.isRateLimited("test-key-unique")).toBe(false);
+describe("AI rate limiting", () => {
+  it("allows requests within the limit and blocks after 10", async () => {
+    const userId = "ai-limit-user";
+    for (let i = 0; i < 10; i++) {
+      expect(await auth.isAiRateLimited(userId)).toBe(false);
+    }
+    expect(await auth.isAiRateLimited(userId)).toBe(true);
+  });
+});
+
+describe("deleteUser last-superuser guard", () => {
+  it("refuses to delete the only superuser", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    expect(await auth.deleteUser(admin!.id)).toBe("last_superuser");
+    expect(await auth.getUser(admin!.id)).toBeDefined();
   });
 
-  it("blocks after exceeding max attempts", () => {
-    const key = "brute-force-test";
-    for (let i = 0; i < 10; i++) {
-      auth.isRateLimited(key);
+  it("allows deleting a superuser when another remains", async () => {
+    const other = await auth.createUser("admin3", "password1234", "Admin 3", "superuser");
+    expect(await auth.deleteUser(other.id)).toBe("ok");
+    expect(await auth.getUser(other.id)).toBeUndefined();
+  });
+
+  it("returns not_found for a nonexistent user", async () => {
+    expect(await auth.deleteUser("nonexistent-id")).toBe("not_found");
+  });
+});
+
+describe("login failure limiting", () => {
+  it("only counts recorded failures and clears on success", async () => {
+    const user = "login-failure-test";
+    for (let i = 0; i < 9; i++) await auth.recordLoginFailure(user, null);
+    expect(await auth.isLoginBlocked(user, null)).toBe(false);
+    await auth.recordLoginFailure(user, null);
+    expect(await auth.isLoginBlocked(user, null)).toBe(true);
+    await auth.clearLoginFailures(user, null);
+    expect(await auth.isLoginBlocked(user, null)).toBe(false);
+  });
+
+  it("checking the block status does not count as an attempt", async () => {
+    const user = "login-peek-test";
+    for (let i = 0; i < 50; i++) await auth.isLoginBlocked(user, null);
+    expect(await auth.isLoginBlocked(user, null)).toBe(false);
+  });
+
+  it("with a trusted IP, one client cannot lock the account for others", async () => {
+    const user = "lockout-target";
+    for (let i = 0; i < 10; i++) await auth.recordLoginFailure(user, "203.0.113.1");
+    expect(await auth.isLoginBlocked(user, "203.0.113.1")).toBe(true);
+    expect(await auth.isLoginBlocked(user, "198.51.100.7")).toBe(false);
+  });
+
+  it("blocks one IP spraying many usernames", async () => {
+    const ip = "203.0.113.50";
+    for (let i = 0; i < 30; i++) await auth.recordLoginFailure(`spray-${i}`, ip);
+    expect(await auth.isLoginBlocked("spray-new-user", ip)).toBe(true);
+  });
+});
+
+describe("trusted client IP", () => {
+  it("ignores forwarding headers when not on Vercel", () => {
+    const req = new Request("http://localhost/", { headers: { "x-forwarded-for": "1.2.3.4" } });
+    expect(auth.getTrustedClientIp(req)).toBeNull();
+  });
+
+  it("uses x-real-ip on Vercel", () => {
+    process.env.VERCEL = "1";
+    try {
+      const req = new Request("http://localhost/", { headers: { "x-real-ip": "1.2.3.4" } });
+      expect(auth.getTrustedClientIp(req)).toBe("1.2.3.4");
+    } finally {
+      delete process.env.VERCEL;
     }
-    expect(auth.isRateLimited(key)).toBe(true);
+  });
+});
+
+describe("session token hashing", () => {
+  async function rawDb() {
+    const { getSharedClient } = await import("@/lib/server/connection");
+    return getSharedClient("__dd_auth_db");
+  }
+
+  it("stores only a hash of the session token", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    const session = await auth.createSession(admin!.id);
+    const db = await rawDb();
+    const raw = await db.execute({ sql: "SELECT id FROM sessions WHERE id = ?", args: [session.id] });
+    expect(raw.rows).toHaveLength(0);
+    expect(await auth.getSessionUser(session.id)).not.toBeNull();
+  });
+
+  it("rejects the stored hash when presented as a token", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    const session = await auth.createSession(admin!.id);
+    const crypto = await import("crypto");
+    const hash = crypto.createHash("sha256").update(session.id).digest("hex");
+    expect(await auth.getSessionUser(hash)).toBeNull();
+    expect(await auth.getSessionUser(session.id)).not.toBeNull();
+  });
+
+  it("upgrades a legacy unhashed session on first use", async () => {
+    const admin = await auth.authenticate("admin", "secret123");
+    const db = await rawDb();
+    const legacyToken = "a".repeat(64);
+    await db.execute({
+      sql: "INSERT INTO sessions (id, userId, expiresAt) VALUES (?, ?, ?)",
+      args: [legacyToken, admin!.id, Date.now() + 60_000],
+    });
+    expect((await auth.getSessionUser(legacyToken))?.id).toBe(admin!.id);
+    const raw = await db.execute({ sql: "SELECT id FROM sessions WHERE id = ?", args: [legacyToken] });
+    expect(raw.rows).toHaveLength(0);
+    expect((await auth.getSessionUser(legacyToken))?.id).toBe(admin!.id);
+    await auth.destroySession(legacyToken);
+    expect(await auth.getSessionUser(legacyToken)).toBeNull();
+  });
+});
+
+describe("setup token", () => {
+  it("is not required by default when self-hosted", () => {
+    expect(auth.isSetupTokenRequired()).toBe(false);
+    expect(auth.checkSetupToken("")).toBe("ok");
+  });
+
+  it("is required and checked when SETUP_TOKEN is set", () => {
+    process.env.SETUP_TOKEN = "correct-token";
+    try {
+      expect(auth.checkSetupToken("wrong")).toBe("invalid");
+      expect(auth.checkSetupToken("correct-token")).toBe("ok");
+    } finally {
+      delete process.env.SETUP_TOKEN;
+    }
+  });
+
+  it("blocks setup on Vercel until SETUP_TOKEN is configured", () => {
+    process.env.VERCEL = "1";
+    try {
+      expect(auth.checkSetupToken("anything")).toBe("not_configured");
+    } finally {
+      delete process.env.VERCEL;
+    }
   });
 });

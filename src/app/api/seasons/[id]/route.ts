@@ -1,6 +1,6 @@
 import { deleteSeason, getSeason, saveSeason } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/auth";
-import type { Season } from "@/lib/types";
+import { isValidId, parseBody, SeasonSchema } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
   const { id } = await params;
-  const season = (await request.json()) as Season;
-  if (!season || typeof season !== "object") {
-    return new Response("Invalid season body", { status: 400 });
-  }
+  if (!isValidId(id)) return Response.json({ error: "Invalid id" }, { status: 400 });
+  const season = await parseBody(request, SeasonSchema);
+  if (season instanceof Response) return season;
   await saveSeason({ ...season, id });
   return Response.json({ ...season, id });
 }

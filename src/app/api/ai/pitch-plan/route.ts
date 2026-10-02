@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { getGame, getAllPlayers } from "@/lib/server/db";
-import { requireUser } from "@/lib/server/auth";
+import { requireUser, isAiRateLimited } from "@/lib/server/auth";
 import type { GamePitchCatchAssignment } from "@/lib/types";
+import { readJson } from "@/lib/server/http";
 
 export const runtime = "nodejs";
 
@@ -24,10 +25,16 @@ function makeModel() {
 export async function POST(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
-  const body = (await request.json()) as PlanRequest;
-  const gameId = typeof body.gameId === "string" ? body.gameId.slice(0, 128) : null;
-  const prompt = typeof body.prompt === "string" ? body.prompt.slice(0, 500) : "";
+  const body = await readJson<PlanRequest>(request);
+  if (body instanceof Response) return body;
+  const gameId = typeof body?.gameId === "string" ? body.gameId.slice(0, 128) : null;
+  const prompt = typeof body?.prompt === "string" ? body.prompt.slice(0, 500) : "";
   if (!gameId) return new Response("Missing gameId", { status: 400 });
+
+  // Each call costs Gemini quota; cap per-user usage.
+  if (await isAiRateLimited(auth.id)) {
+    return new Response("Too many AI requests. Try again later.", { status: 429 });
+  }
 
   const game = await getGame(gameId);
   if (!game) return new Response("Game not found", { status: 404 });
@@ -70,7 +77,12 @@ export async function POST(request: Request) {
     additionalProperties: false,
   } as const;
 
-  const ai = makeModel();
+  let ai: GoogleGenAI;
+  try {
+    ai = makeModel();
+  } catch {
+    return new Response("AI is not configured", { status: 503 });
+  }
   const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash-lite";
   const systemContext = [
     "You are helping build a youth baseball lineup.",
@@ -79,27 +91,32 @@ export async function POST(request: Request) {
     `Game innings: ${game.innings.length}`,
     `Roster: ${JSON.stringify(roster)}`,
   ].join("\n");
-  const response = await ai.models.generateContent({
-    model,
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: systemContext }],
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: systemContext }],
+        },
+        {
+          role: "model",
+          parts: [{ text: "Understood. Ready to generate assignments. What is your request?" }],
+        },
+        {
+          role: "user",
+          parts: [{ text: prompt || "Please generate balanced assignments." }],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseJsonSchema: schema,
       },
-      {
-        role: "model",
-        parts: [{ text: "Understood. Ready to generate assignments. What is your request?" }],
-      },
-      {
-        role: "user",
-        parts: [{ text: prompt || "Please generate balanced assignments." }],
-      },
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseJsonSchema: schema,
-    },
-  });
+    });
+  } catch {
+    return new Response("AI request failed", { status: 502 });
+  }
 
   let parsed: PlanResponse;
   try {
@@ -111,7 +128,9 @@ export async function POST(request: Request) {
   // Only accept player IDs that actually belong to this game's roster.
   // The model can hallucinate or be prompted to inject arbitrary strings.
   const rosterIds = new Set(roster.map((p) => p.id));
-  const assignments = (parsed.assignments ?? [])
+  const rawAssignments = Array.isArray(parsed?.assignments) ? parsed.assignments : [];
+  const assignments = rawAssignments
+    .filter((item) => item && typeof item === "object" && Number.isInteger(item.inning))
     .filter((item) => item.inning >= 1 && item.inning <= game.innings.length)
     .map((item) => ({
       inning: item.inning,
@@ -122,6 +141,8 @@ export async function POST(request: Request) {
 
   return Response.json({
     assignments,
-    notes: parsed.notes ?? [],
+    notes: Array.isArray(parsed?.notes)
+      ? parsed.notes.filter((n): n is string => typeof n === "string").slice(0, 20).map((n) => n.slice(0, 500))
+      : [],
   } satisfies PlanResponse);
 }

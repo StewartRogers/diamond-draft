@@ -8,7 +8,10 @@ import {
   restoreBackup,
 } from "@/lib/server/db";
 import { requireUser, requireSuperuser } from "@/lib/server/auth";
+import { DEFAULT_APP_SETTINGS } from "@/lib/types";
 import type { AppSettings, Game, Player, Season, Team } from "@/lib/types";
+import { readJson, BACKUP_MAX_BODY_BYTES } from "@/lib/server/http";
+import { parseBody, BackupSchema } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -32,16 +35,22 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const auth = await requireSuperuser(request);
   if (auth instanceof Response) return auth;
-  const backup = (await request.json()) as Backup;
-  if (!backup || typeof backup !== "object") {
-    return new Response("Invalid backup body", { status: 400 });
-  }
+  // Validate the whole backup before anything is deleted.
+  const backup = await parseBody(request, BackupSchema, BACKUP_MAX_BODY_BYTES);
+  if (backup instanceof Response) return backup;
   await restoreBackup({
-    players: Array.isArray(backup.players) ? backup.players : [],
-    games: Array.isArray(backup.games) ? backup.games : [],
-    teams: Array.isArray(backup.teams) ? backup.teams : [],
-    seasons: Array.isArray(backup.seasons) ? backup.seasons : [],
-    settings: backup.settings ?? {},
+    players: backup.players,
+    games: backup.games,
+    teams: backup.teams,
+    // v1 seasons may lack team/roster fields; restoreBackup re-runs the
+    // multi-team migration, which fills them in.
+    seasons: backup.seasons as Season[],
+    settings: {
+      ...DEFAULT_APP_SETTINGS,
+      activeTeamId: null,
+      activeSeasonId: null,
+      ...backup.settings,
+    },
   });
   return Response.json({ ok: true });
 }
@@ -49,7 +58,8 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const auth = await requireSuperuser(request);
   if (auth instanceof Response) return auth;
-  const body = await request.json().catch(() => ({})) as Record<string, unknown>;
+  const body = await readJson<Record<string, unknown> | null>(request);
+  if (body instanceof Response) return body;
   if (body?.confirm !== "wipe") {
     return new Response("Missing confirmation: send { confirm: 'wipe' }", { status: 400 });
   }

@@ -62,6 +62,8 @@ The Zustand store (`store.ts`) is the single source of truth on the client. It h
 | `server/auth.ts` | Password hashing, session CRUD, user CRUD, rate limiting, route guards (server-only). |
 | `server/connection.ts` | Shared @libsql/client factory — creates local (`file:`) or remote (Turso `libsql://`) clients. Handles WAL mode for local SQLite. |
 | `server/env.ts` | Vercel environment detection (`getVercelEnv`) and env var validation (`validateEnv`). |
+| `server/http.ts` | `readJson(request, maxBytes)` — size-capped JSON body parsing for route handlers; returns a 400/413 `Response` on bad input. Use it instead of `request.json()`. |
+| `server/validate.ts` | zod schemas for every data-API body (`PlayerSchema`, `GameSchema`, `BackupSchema`, …) and `parseBody(request, schema)`. Schemas strip unknown keys and bound sizes; POST routes return 409 for an existing id. |
 
 ### Lineup builder UI (`src/components/game/lineup/`)
 
@@ -81,8 +83,9 @@ Cell interaction model (as of latest):
 All API routes (except `/api/auth/*`) require a valid session. Auth is built-in with no external dependencies:
 
 - **Password hashing**: Node's `crypto.scrypt` with per-user random salt, verified via `timingSafeEqual`.
-- **Sessions**: opaque 256-bit tokens stored in SQLite `sessions` table, 30-day expiry, httpOnly cookie (`dd_session`).
+- **Sessions**: opaque 256-bit tokens; only their SHA-256 hash is stored in the SQLite `sessions` table, 30-day expiry, httpOnly cookie (`dd_session`).
 - **Roles**: `superuser` (can manage users) and `user` (full read/write access to team data).
+- **Rate limiting**: DB-backed (`rate_limits` table). Failed logins are limited per username, plus per IP and per IP+username on Vercel, where the client IP can be trusted.
 - **Route guards**: `requireUser(request)` and `requireSuperuser(request)` — return the user or a 401/403 Response.
 - **First-run setup**: when `countUsers() === 0`, the app redirects to `/setup` to create the initial superuser.
 
@@ -110,6 +113,7 @@ All routes use `export const runtime = "nodejs"` (required for `@libsql/client`)
 | `GEMINI_MODEL` | Gemini model override (default `gemini-2.5-flash-lite`) |
 | `ALLOWED_DEV_ORIGINS` | Comma-separated LAN IPs allowed to access the dev server (e.g. `10.0.0.73`) |
 | `DIAMOND_DRAFT_DATA_DIR` | Override the SQLite data directory (default: `./data`) |
+| `SETUP_TOKEN` | Required by `/setup` to create the first admin when set — and always on Vercel, where setup is disabled until it is set |
 
 ## Testing
 

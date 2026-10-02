@@ -1,6 +1,6 @@
 import { deletePlayer, getPlayer, savePlayer } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/auth";
-import type { Player } from "@/lib/types";
+import { isValidId, parseBody, PlayerSchema } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
   const { id } = await params;
-  const player = (await request.json()) as Player;
-  if (!player || typeof player !== "object") {
-    return new Response("Invalid player body", { status: 400 });
-  }
+  if (!isValidId(id)) return Response.json({ error: "Invalid id" }, { status: 400 });
+  const player = await parseBody(request, PlayerSchema);
+  if (player instanceof Response) return player;
   await savePlayer({ ...player, id });
   return Response.json({ ...player, id });
 }

@@ -1,6 +1,6 @@
-import { getAllPlayers, savePlayer } from "@/lib/server/db";
+import { getAllPlayers, savePlayer, getPlayer } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/auth";
-import type { Player } from "@/lib/types";
+import { parseBody, PlayerSchema } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
-  const player = (await request.json()) as Player;
-  if (!player?.id || typeof player.id !== "string") {
-    return new Response("Invalid player: missing id", { status: 400 });
+  const player = await parseBody(request, PlayerSchema);
+  if (player instanceof Response) return player;
+  if (await getPlayer(player.id)) {
+    return Response.json({ error: "Player already exists" }, { status: 409 });
   }
   await savePlayer(player);
   return Response.json(player, { status: 201 });

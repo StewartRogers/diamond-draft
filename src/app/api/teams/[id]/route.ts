@@ -1,6 +1,6 @@
 import { deleteTeam, getTeam, saveTeam } from "@/lib/server/db";
 import { requireUser } from "@/lib/server/auth";
-import type { Team } from "@/lib/types";
+import { isValidId, parseBody, TeamSchema } from "@/lib/server/validate";
 
 export const runtime = "nodejs";
 
@@ -17,10 +17,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const auth = await requireUser(request);
   if (auth instanceof Response) return auth;
   const { id } = await params;
-  const team = (await request.json()) as Team;
-  if (!team || typeof team !== "object") {
-    return new Response("Invalid team body", { status: 400 });
-  }
+  if (!isValidId(id)) return Response.json({ error: "Invalid id" }, { status: 400 });
+  const team = await parseBody(request, TeamSchema);
+  if (team instanceof Response) return team;
   await saveTeam({ ...team, id });
   return Response.json({ ...team, id });
 }

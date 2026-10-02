@@ -170,6 +170,25 @@ describe("POST /api/games", () => {
     expect(res.status).toBe(400);
   });
 
+  it("returns 409 instead of overwriting an existing game", async () => {
+    mockDb.games.set("game-existing", { ...makeTestGame("game-existing"), opponent: "Original" });
+    const res = await gamesPOST(makeRequest({ ...makeTestGame("game-existing"), opponent: "Overwrite" }, "POST"));
+    expect(res.status).toBe(409);
+    expect(mockDb.games.get("game-existing")!.opponent).toBe("Original");
+  });
+
+  it("returns 400 for a game missing required fields", async () => {
+    const res = await gamesPOST(makeRequest({ id: "game-bad", date: "2026-06-01" }, "POST"));
+    expect(res.status).toBe(400);
+    expect(mockDb.games.has("game-bad")).toBe(false);
+  });
+
+  it("strips unknown fields before saving", async () => {
+    const res = await gamesPOST(makeRequest({ ...makeTestGame("game-extra"), injected: "x" }, "POST"));
+    expect(res.status).toBe(201);
+    expect(mockDb.games.get("game-extra")).not.toHaveProperty("injected");
+  });
+
   it("persists game data integrity — saved game matches input", async () => {
     const game = makeTestGame("integrity-test");
     game.opponent = "Data Integrity FC";

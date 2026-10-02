@@ -8,6 +8,8 @@ export default function SetupPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const [tokenRequired, setTokenRequired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -17,7 +19,10 @@ export default function SetupPage() {
       .then((r) => r.json())
       .then((data) => {
         if (!data.needsSetup) router.replace("/login");
-        else setLoading(false);
+        else {
+          setTokenRequired(!!data.setupTokenRequired);
+          setLoading(false);
+        }
       })
       .catch(() => setLoading(false));
   }, [router]);
@@ -32,7 +37,7 @@ export default function SetupPage() {
       const res = await fetch("/api/auth/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, displayName }),
+        body: JSON.stringify({ username, password, displayName, setupToken }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -69,6 +74,20 @@ export default function SetupPage() {
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {tokenRequired && (
+            <div>
+              <label style={labelStyle}>Setup Token</label>
+              <input
+                type="password"
+                value={setupToken}
+                onChange={(e) => setSetupToken(e.target.value)}
+                placeholder="Value of the SETUP_TOKEN env var"
+                required
+                autoComplete="off"
+                style={inputStyle}
+              />
+            </div>
+          )}
           <div>
             <label style={labelStyle}>Display Name</label>
             <input

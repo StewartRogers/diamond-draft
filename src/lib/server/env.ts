@@ -40,6 +40,10 @@ export function validateEnv(): EnvValidation {
     missing.push("TURSO_DATABASE_URL");
   }
 
+  if (isVercel && !process.env.SETUP_TOKEN) {
+    warnings.push("SETUP_TOKEN is not set — first-run setup is disabled on Vercel until it is");
+  }
+
   if (!process.env.GEMINI_API_KEY) {
     warnings.push("GEMINI_API_KEY is not set — AI pitch-plan feature will be disabled");
   }

@@ -1,5 +1,6 @@
 import { requireSuperuser, getAllUsers, createUser, validatePassword } from "@/lib/server/auth";
 import type { UserRole } from "@/lib/server/auth";
+import { readJson } from "@/lib/server/http";
 
 export const runtime = "nodejs";
 
@@ -14,12 +15,16 @@ export async function POST(request: Request) {
   const result = await requireSuperuser(request);
   if (result instanceof Response) return result;
 
-  const body = (await request.json()) as {
+  const body = await readJson<{
     username?: string;
     password?: string;
     displayName?: string;
     role?: UserRole;
-  };
+  } | null>(request);
+  if (body instanceof Response) return body;
+  if (!body || typeof body !== "object") {
+    return Response.json({ error: "Invalid request body" }, { status: 400 });
+  }
 
   const username = typeof body.username === "string" ? body.username.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";

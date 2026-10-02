@@ -17,6 +17,7 @@ import { makePlayer, makeInnings, resetPlayerSeq } from "./helpers";
 vi.mock("@/lib/server/auth", () => ({
   requireUser: vi.fn(async () => ({ id: "test-user", username: "admin", role: "superuser" })),
   requireSuperuser: vi.fn(async () => ({ id: "test-user", username: "admin", role: "superuser" })),
+  isAiRateLimited: vi.fn(async () => false),
 }));
 
 // Mock the Gemini client before any route import pulls it in.

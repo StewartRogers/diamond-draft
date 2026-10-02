@@ -38,37 +38,124 @@ const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1 };
 const MAX_PASSWORD_LENGTH = 256;
 
 // ─── Rate limiting ──────────────────────────────────────────────────────────
+// Counters live in the auth database so limits hold across serverless
+// instances and restarts.
 
-const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const MAX_LOGIN_ATTEMPTS = 10;
-const MAX_RATE_LIMIT_ENTRIES = 10_000;
-const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
-let lastRateLimitCleanup = Date.now();
+const RATE_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_LOGIN_FAILURES = 10; // per username (per IP+username when the IP is known)
+const MAX_LOGIN_FAILURES_PER_IP = 30; // password spraying from one client
+const MAX_LOGIN_FAILURES_PER_USER_ALL_IPS = 100; // distributed guessing
+const MAX_SETUP_ATTEMPTS = 10;
+const MAX_AI_REQUESTS = 10;
 
-function pruneExpiredEntries(): void {
-  const now = Date.now();
-  if (now - lastRateLimitCleanup < RATE_LIMIT_CLEANUP_INTERVAL_MS && loginAttempts.size < MAX_RATE_LIMIT_ENTRIES) return;
-  lastRateLimitCleanup = now;
-  for (const [key, entry] of loginAttempts) {
-    if (now > entry.resetAt) loginAttempts.delete(key);
-  }
+/**
+ * Client IP, but only where it cannot be spoofed. Vercel overwrites
+ * x-real-ip / x-forwarded-for at its edge; a self-hosted Next server keeps
+ * whatever the client sent, so there we return null.
+ */
+export function getTrustedClientIp(request: Request): string | null {
+  if (!process.env.VERCEL) return null;
+  const ip =
+    request.headers.get("x-real-ip") ??
+    request.headers.get("x-forwarded-for")?.split(",")[0];
+  return ip?.trim() || null;
 }
 
-function checkRateLimit(key: string): boolean {
-  pruneExpiredEntries();
+/** Increments `key` and returns true once it is over `max` in the window. */
+async function hitRateLimit(key: string, max: number): Promise<boolean> {
+  const db = await ensureSchema();
   const now = Date.now();
-  const entry = loginAttempts.get(key);
-  if (!entry || now > entry.resetAt) {
-    loginAttempts.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= MAX_LOGIN_ATTEMPTS;
+  const result = await db.execute({
+    sql: `INSERT INTO rate_limits (key, count, resetAt) VALUES (?, 1, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            count = CASE WHEN rate_limits.resetAt < ? THEN 1 ELSE rate_limits.count + 1 END,
+            resetAt = CASE WHEN rate_limits.resetAt < ? THEN excluded.resetAt ELSE rate_limits.resetAt END
+          RETURNING count`,
+    args: [key, now + RATE_WINDOW_MS, now, now],
+  });
+  return Number(result.rows[0]?.count ?? 0) > max;
 }
 
-export function isRateLimited(key: string): boolean {
-  return !checkRateLimit(key);
+async function isOverLimit(key: string, max: number): Promise<boolean> {
+  const db = await ensureSchema();
+  const result = await db.execute({
+    sql: "SELECT count FROM rate_limits WHERE key = ? AND resetAt >= ?",
+    args: [key, Date.now()],
+  });
+  return Number(result.rows[0]?.count ?? 0) >= max;
+}
+
+async function clearRateLimit(keys: string[]): Promise<void> {
+  const db = await ensureSchema();
+  await db.batch(
+    keys.map((key) => ({ sql: "DELETE FROM rate_limits WHERE key = ?", args: [key] })),
+    "write"
+  );
+}
+
+async function cleanExpiredRateLimits(): Promise<void> {
+  const db = await ensureSchema();
+  await db.execute({ sql: "DELETE FROM rate_limits WHERE resetAt < ?", args: [Date.now()] });
+}
+
+function loginBuckets(username: string, ip: string | null): { key: string; max: number }[] {
+  const user = username.toLowerCase().trim();
+  if (!ip) return [{ key: `login:user:${user}`, max: MAX_LOGIN_FAILURES }];
+  // With a trusted IP, one client can only lock out its own attempts; locking
+  // the account for everyone takes many IPs.
+  return [
+    { key: `login:ip-user:${ip}:${user}`, max: MAX_LOGIN_FAILURES },
+    { key: `login:ip:${ip}`, max: MAX_LOGIN_FAILURES_PER_IP },
+    { key: `login:user:${user}`, max: MAX_LOGIN_FAILURES_PER_USER_ALL_IPS },
+  ];
+}
+
+/** True when this username/IP has too many recent failures. Not counted as an attempt. */
+export async function isLoginBlocked(username: string, ip: string | null): Promise<boolean> {
+  for (const { key, max } of loginBuckets(username, ip)) {
+    if (await isOverLimit(key, max)) return true;
+  }
+  return false;
+}
+
+/** Only failed logins count toward the limits. */
+export async function recordLoginFailure(username: string, ip: string | null): Promise<void> {
+  for (const { key, max } of loginBuckets(username, ip)) await hitRateLimit(key, max);
+}
+
+/** On success, clear this client's buckets; the per-IP spray bucket stays. */
+export async function clearLoginFailures(username: string, ip: string | null): Promise<void> {
+  await clearRateLimit(
+    loginBuckets(username, ip).filter((b) => !b.key.startsWith("login:ip:")).map((b) => b.key)
+  );
+}
+
+export async function isSetupRateLimited(ip: string | null): Promise<boolean> {
+  return hitRateLimit(`setup:${ip ?? "unknown"}`, MAX_SETUP_ATTEMPTS);
+}
+
+export async function isAiRateLimited(userId: string): Promise<boolean> {
+  return hitRateLimit(`ai:${userId}`, MAX_AI_REQUESTS);
+}
+
+// ─── First-run setup token ──────────────────────────────────────────────────
+
+/**
+ * A setup token is required when SETUP_TOKEN is set, and always on Vercel,
+ * where a fresh public deployment could otherwise be claimed by whoever
+ * reaches /setup first.
+ */
+export function isSetupTokenRequired(): boolean {
+  return !!process.env.SETUP_TOKEN || process.env.VERCEL === "1";
+}
+
+export function checkSetupToken(provided: string): "ok" | "not_configured" | "invalid" {
+  if (!isSetupTokenRequired()) return "ok";
+  const expected = process.env.SETUP_TOKEN;
+  if (!expected) return "not_configured";
+  const a = crypto.createHash("sha256").update(provided).digest();
+  const b = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(a, b) ? "ok" : "invalid";
 }
 
 // ─── Database ────────────────────────────────────────────────────────────────
@@ -91,10 +178,23 @@ async function ensureSchema(): Promise<Client> {
     `CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       userId TEXT NOT NULL,
-      expiresAt INTEGER NOT NULL
+      expiresAt INTEGER NOT NULL,
+      hashed INTEGER NOT NULL DEFAULT 0
     )`,
     "CREATE INDEX IF NOT EXISTS idx_sessions_userId ON sessions(userId)",
+    `CREATE TABLE IF NOT EXISTS rate_limits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      resetAt INTEGER NOT NULL
+    )`,
   ], "write");
+
+  // Databases created before session tokens were hashed lack this column;
+  // their existing rows get hashed = 0 and are re-keyed on first use.
+  const columns = await db.execute("PRAGMA table_info(sessions)");
+  if (!columns.rows.some((c) => c.name === "hashed")) {
+    await db.execute("ALTER TABLE sessions ADD COLUMN hashed INTEGER NOT NULL DEFAULT 0");
+  }
 
   globalAuthDb.__dd_auth_db_initialized = true;
   return db;
@@ -222,12 +322,22 @@ export async function getUser(id: string): Promise<SafeUser | undefined> {
   return toSafeUser(JSON.parse(row.data as string) as StoredUser);
 }
 
-export async function deleteUser(id: string): Promise<void> {
+export async function deleteUser(id: string): Promise<"ok" | "last_superuser" | "not_found"> {
   const db = await ensureSchema();
-  await db.batch([
-    { sql: "DELETE FROM users WHERE id = ?", args: [id] },
-    { sql: "DELETE FROM sessions WHERE userId = ?", args: [id] },
+  // The last-superuser check is part of the DELETE so two concurrent requests
+  // cannot each remove the other superuser and leave none.
+  const results = await db.batch([
+    {
+      sql: `DELETE FROM users WHERE id = ? AND (
+              json_extract(data, '$.role') != 'superuser'
+              OR (SELECT COUNT(*) FROM users WHERE id != ? AND json_extract(data, '$.role') = 'superuser') >= 1
+            )`,
+      args: [id, id],
+    },
+    { sql: "DELETE FROM sessions WHERE userId = ? AND NOT EXISTS (SELECT 1 FROM users WHERE id = ?)", args: [id, id] },
   ], "write");
+  if ((results[0]?.rowsAffected ?? 0) > 0) return "ok";
+  return (await getUser(id)) ? "last_superuser" : "not_found";
 }
 
 export async function resetPassword(userId: string, newPassword: string): Promise<boolean> {
@@ -297,25 +407,46 @@ export async function authenticate(username: string, password: string): Promise<
 
 // ─── Session management ──────────────────────────────────────────────────────
 
+/**
+ * Session tokens are stored only as SHA-256 hashes, so a leaked database (or
+ * Turso dump) does not yield usable session cookies.
+ */
+function hashSessionToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+/** Returns the raw token for the cookie; only its hash is stored. */
 export async function createSession(userId: string): Promise<AuthSession> {
   await cleanExpiredSessions();
   const db = getSharedClient("__dd_auth_db");
   const id = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_MAX_AGE_MS;
   await db.execute({
-    sql: "INSERT INTO sessions (id, userId, expiresAt) VALUES (?, ?, ?)",
-    args: [id, userId, expiresAt],
+    sql: "INSERT INTO sessions (id, userId, expiresAt, hashed) VALUES (?, ?, ?, 1)",
+    args: [hashSessionToken(id), userId, expiresAt],
   });
   return { id, userId, expiresAt };
 }
 
 export async function getSessionUser(sessionId: string): Promise<SafeUser | null> {
   const db = await ensureSchema();
-  const result = await db.execute({ sql: "SELECT * FROM sessions WHERE id = ?", args: [sessionId] });
+  const hashed = hashSessionToken(sessionId);
+  let result = await db.execute({ sql: "SELECT * FROM sessions WHERE id = ?", args: [hashed] });
+  if (!result.rows[0]) {
+    // Sessions created before tokens were hashed are stored raw. Re-key such a
+    // row to its hash on first use so existing logins keep working. The
+    // `hashed = 0` guard stops a leaked hash from being replayed as a token.
+    const upgraded = await db.execute({
+      sql: "UPDATE sessions SET id = ?, hashed = 1 WHERE id = ? AND hashed = 0",
+      args: [hashed, sessionId],
+    });
+    if (upgraded.rowsAffected === 0) return null;
+    result = await db.execute({ sql: "SELECT * FROM sessions WHERE id = ?", args: [hashed] });
+  }
   const row = result.rows[0];
   if (!row) return null;
   if (Number(row.expiresAt) < Date.now()) {
-    await db.execute({ sql: "DELETE FROM sessions WHERE id = ?", args: [sessionId] });
+    await db.execute({ sql: "DELETE FROM sessions WHERE id = ?", args: [hashed] });
     return null;
   }
   const user = await getUser(row.userId as string);
@@ -324,12 +455,16 @@ export async function getSessionUser(sessionId: string): Promise<SafeUser | null
 
 export async function destroySession(sessionId: string): Promise<void> {
   const db = await ensureSchema();
-  await db.execute({ sql: "DELETE FROM sessions WHERE id = ?", args: [sessionId] });
+  await db.execute({
+    sql: "DELETE FROM sessions WHERE id = ? OR (id = ? AND hashed = 0)",
+    args: [hashSessionToken(sessionId), sessionId],
+  });
 }
 
 async function cleanExpiredSessions(): Promise<void> {
   const db = await ensureSchema();
   await db.execute({ sql: "DELETE FROM sessions WHERE expiresAt < ?", args: [Date.now()] });
+  await cleanExpiredRateLimits();
 }
 
 // ─── Cookie helpers ──────────────────────────────────────────────────────────
@@ -350,7 +485,8 @@ export function makeSessionCookie(sessionId: string): string {
 }
 
 export function makeClearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`;
 }
 
 // ─── Route guards ────────────────────────────────────────────────────────────
