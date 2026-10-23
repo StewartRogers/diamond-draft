@@ -27,6 +27,7 @@ const HAS_KEY = Boolean(process.env.GEMINI_API_KEY);
 let tmpDir: string;
 let db: typeof import("@/lib/server/db");
 let route: typeof import("@/app/api/ai/pitch-plan/route");
+let sessionCookie: string;
 
 // ─── Golden roster: stable names the prompts refer to ─────────────────────────
 
@@ -65,7 +66,7 @@ async function plan(gameId: string, prompt: string) {
   const res = await route.POST(
     new Request("http://localhost/api/ai/pitch-plan", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", cookie: sessionCookie },
       body: JSON.stringify({ gameId, prompt }),
     })
   );
@@ -109,8 +110,13 @@ describe.skipIf(!HAS_KEY)("pitch-plan evals (live Gemini)", () => {
     process.env.DIAMOND_DRAFT_DATA_DIR = tmpDir;
     db = await import("@/lib/server/db");
     route = await import("@/app/api/ai/pitch-plan/route");
+    // The route requires a signed-in user, so create one and send its session.
+    const auth = await import("@/lib/server/auth");
+    const user = await auth.createUser("eval-coach", "eval-pass-123", "Eval Coach", "user");
+    const session = await auth.createSession(user.id);
+    sessionCookie = `${auth.SESSION_COOKIE}=${session.id}`;
     for (const id of ["eval-g1", "eval-g2", "eval-g3", "eval-g4", "eval-g5"]) {
-      db.saveGame(makeGame(id));
+      await db.saveGame(makeGame(id));
     }
   });
 
