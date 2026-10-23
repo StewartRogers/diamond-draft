@@ -2,6 +2,9 @@
   "name": "diamond-draft",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "^24.22.1"
+  },
   "scripts": {
     "test": "vitest run",
     "eval": "vitest run --config vitest.eval.config.ts",
@@ -19,7 +22,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "immer": "^11.1.8",
-    "next": "^16.2.9",
+    "next": "^16.4.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "uuid": "^14.0.0",
@@ -28,17 +31,17 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "cross-env": "^10.1.0",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.9",
+    "eslint-config-next": "^16.4.1",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "postcss": "^8.5.28"
